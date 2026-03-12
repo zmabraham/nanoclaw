@@ -199,6 +199,16 @@ function buildVolumeMounts(
     readonly: false,
   });
 
+  // Google Workspace CLI credentials — mount if present so gws works inside the container
+  const gwsConfigDir = path.join(projectRoot, 'data', 'gws');
+  if (fs.existsSync(gwsConfigDir)) {
+    mounts.push({
+      hostPath: gwsConfigDir,
+      containerPath: '/home/node/.config/gws',
+      readonly: true,
+    });
+  }
+
   // Additional mounts validated against external allowlist (tamper-proof from containers)
   if (group.containerConfig?.additionalMounts) {
     const validatedMounts = validateAdditionalMounts(

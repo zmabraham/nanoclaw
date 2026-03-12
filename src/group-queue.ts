@@ -348,22 +348,63 @@ export class GroupQueue {
     return this.getGroup(groupJid).active;
   }
 
-  async shutdown(_gracePeriodMs: number): Promise<void> {
+  async shutdown(gracePeriodMs: number): Promise<void> {
     this.shuttingDown = true;
 
-    // Count active containers but don't kill them — they'll finish on their own
-    // via idle timeout or container timeout. The --rm flag cleans them up on exit.
-    // This prevents WhatsApp reconnection restarts from killing working agents.
-    const activeContainers: string[] = [];
-    for (const [jid, state] of this.groups) {
+    const activeProcesses: Array<{ proc: ChildProcess; containerName: string }> = [];
+    for (const [, state] of this.groups) {
       if (state.process && !state.process.killed && state.containerName) {
-        activeContainers.push(state.containerName);
+        activeProcesses.push({ proc: state.process, containerName: state.containerName });
       }
     }
 
+    if (activeProcesses.length === 0) {
+      logger.info('GroupQueue shutting down (no active containers)');
+      return;
+    }
+
     logger.info(
-      { activeCount: this.activeCount, detachedContainers: activeContainers },
-      'GroupQueue shutting down (containers detached, not killed)',
+      { activeCount: activeProcesses.length, containers: activeProcesses.map((p) => p.containerName) },
+      'GroupQueue shutting down (stopping active containers)',
     );
+
+    // Send SIGTERM to each docker-run process; the Docker daemon forwards it to the container.
+    for (const { proc } of activeProcesses) {
+      try {
+        proc.kill('SIGTERM');
+      } catch {
+        // process may have already exited
+      }
+    }
+
+    // Wait for all processes to exit, up to gracePeriodMs, then SIGKILL stragglers.
+    await Promise.all(
+      activeProcesses.map(
+        ({ proc, containerName }) =>
+          new Promise<void>((resolve) => {
+            if (proc.exitCode !== null || proc.killed) {
+              resolve();
+              return;
+            }
+            const timer = setTimeout(() => {
+              if (proc.exitCode === null && !proc.killed) {
+                logger.warn({ containerName }, 'Container did not exit in time, force killing');
+                try {
+                  proc.kill('SIGKILL');
+                } catch {
+                  // ignore
+                }
+              }
+              resolve();
+            }, gracePeriodMs);
+            proc.once('exit', () => {
+              clearTimeout(timer);
+              resolve();
+            });
+          }),
+      ),
+    );
+
+    logger.info('GroupQueue shutdown complete');
   }
 }

@@ -24,6 +24,7 @@ import {
   OnChatMetadata,
   RegisteredGroup,
 } from '../types.js';
+import { registerChannel } from './registry.js';
 
 const GROUP_SYNC_INTERVAL_MS = 24 * 60 * 60 * 1000; // 24 hours
 
@@ -455,3 +456,10 @@ export class WhatsAppChannel implements Channel {
     }
   }
 }
+
+registerChannel('whatsapp', (opts) => {
+  const authDir = path.join(STORE_DIR, 'auth');
+  const credsFile = path.join(authDir, 'creds.json');
+  if (!fs.existsSync(credsFile)) return null;
+  return new WhatsAppChannel(opts);
+});
