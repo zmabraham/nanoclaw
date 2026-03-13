@@ -1,0 +1,6 @@
+{
+  "name": "message-search",
+  "description": "Semantic message search via RAG",
+  "tier": 0,
+  "dependencies": []
+}
