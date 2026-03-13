@@ -1,0 +1,6 @@
+{
+  "name": "feature-request",
+  "description": "Write structured PRDs to propose features for the host to build",
+  "tier": 0,
+  "dependencies": []
+}
