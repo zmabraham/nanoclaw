@@ -1,0 +1,6 @@
+{
+  "name": "task-scheduler-fixes",
+  "description": "Bug fixes for the task scheduler: group chat safety guard, early next_run advancement to prevent duplicate execution, and scheduleClose cleanup",
+  "tier": 0,
+  "dependencies": []
+}
