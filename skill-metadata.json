@@ -1,0 +1,6 @@
+{
+  "name": "lifecycle-hooks",
+  "description": "Lifecycle hooks for message processing events",
+  "tier": 0,
+  "dependencies": []
+}
