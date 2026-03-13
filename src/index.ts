@@ -573,6 +573,7 @@ async function main(): Promise<void> {
       );
     },
     getAvailableGroups,
+    recoverPendingMessages,
     writeGroupsSnapshot: (gf, im, ag, rj) =>
       writeGroupsSnapshot(gf, im, ag, rj),
   });

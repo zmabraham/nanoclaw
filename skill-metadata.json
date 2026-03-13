@@ -1,0 +1,6 @@
+{
+  "name": "ipc-handler-registry",
+  "description": "Modular IPC handler registration system with self-heal error reporting",
+  "tier": 0,
+  "dependencies": []
+}
