@@ -1,6 +1,11 @@
 {
-  "name": "lifecycle-hooks",
-  "description": "Lifecycle hooks for message processing events",
-  "tier": 0,
-  "dependencies": []
+  "name": "group-lifecycle",
+  "description": "IPC handler for remote group unregistration, enabling container agents to remove groups via the unregister_group command",
+  "tier": 2,
+  "dependencies": [
+    "lifecycle-hooks"
+  ],
+  "also_requires": [
+    "ipc-handler-registry"
+  ]
 }
