@@ -268,6 +268,11 @@ function buildContainerArgs(
   args.push('-e', 'ANTHROPIC_DEFAULT_SONNET_MODEL=glm-4.7');
   args.push('-e', 'ANTHROPIC_DEFAULT_OPUS_MODEL=glm-5');
 
+  // Pass Jina API key for search functionality (main group only uses this)
+  if (process.env.JINA_API_KEY) {
+    args.push('-e', `JINA_API_KEY=${process.env.JINA_API_KEY}`);
+  }
+
   // Runtime-specific args for host gateway resolution
   args.push(...hostGatewayArgs());
 
