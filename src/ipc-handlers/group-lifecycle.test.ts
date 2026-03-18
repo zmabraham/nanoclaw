@@ -31,6 +31,7 @@ describe('group-lifecycle IPC handler', () => {
       syncGroups: vi.fn(),
       getAvailableGroups: vi.fn().mockReturnValue([]),
       writeGroupsSnapshot: vi.fn(),
+      onTasksChanged: vi.fn(),
       ...overrides,
     };
   }

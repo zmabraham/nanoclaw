@@ -128,6 +128,7 @@ describe('processTaskIpc self-heal integration', () => {
     syncGroups: async () => {},
     getAvailableGroups: () => [],
     writeGroupsSnapshot: () => {},
+    onTasksChanged: () => {},
   });
 
   it('unknown IPC type writes notification to input dir', async () => {
