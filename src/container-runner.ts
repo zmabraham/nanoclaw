@@ -153,6 +153,20 @@ function buildVolumeMounts(
     for (const skillDir of fs.readdirSync(skillsSrc)) {
       const srcDir = path.join(skillsSrc, skillDir);
       if (!fs.statSync(srcDir).isDirectory()) continue;
+
+      // Check for mainOnly frontmatter - skip main-only skills for non-main groups
+      const skillFile = path.join(srcDir, 'SKILL.md');
+      if (fs.existsSync(skillFile)) {
+        const content = fs.readFileSync(skillFile, 'utf8');
+        const frontmatterMatch = content.match(/^---\n([\s\S]*?)\n---/);
+        if (frontmatterMatch) {
+          const frontmatter = frontmatterMatch[1];
+          if (frontmatter.includes('mainOnly: true') && !isMain) {
+            continue; // Skip main-only skills for non-main groups
+          }
+        }
+      }
+
       const dstDir = path.join(skillsDst, skillDir);
       fs.cpSync(srcDir, dstDir, { recursive: true });
     }
@@ -247,6 +261,12 @@ function buildContainerArgs(
   } else {
     args.push('-e', 'CLAUDE_CODE_OAUTH_TOKEN=placeholder');
   }
+
+  // Pass model environment variables for proper model mapping
+  args.push('-e', 'ANTHROPIC_DEFAULT_MODEL=glm-4.5-air');
+  args.push('-e', 'ANTHROPIC_DEFAULT_HAIKU_MODEL=glm-4.5-air');
+  args.push('-e', 'ANTHROPIC_DEFAULT_SONNET_MODEL=glm-4.7');
+  args.push('-e', 'ANTHROPIC_DEFAULT_OPUS_MODEL=glm-5');
 
   // Runtime-specific args for host gateway resolution
   args.push(...hostGatewayArgs());
