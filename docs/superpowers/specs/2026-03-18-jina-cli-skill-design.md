@@ -125,7 +125,7 @@ jina search "BERT" --json | jq '.results[0].url'
 
 **File:** `container/Dockerfile`
 
-Add Python/pip and install jina-cli:
+Add Python/pip and install jina-cli (no API key in image - passed at runtime):
 
 ```dockerfile
 # Install Python and jina-cli for web search
@@ -135,14 +135,33 @@ RUN apt-get update && apt-get install -y \
     python3-venv \
     && pip3 install --break-system-packages jina-cli \
     && rm -rf /var/lib/apt/lists/*
-
-# Set Jina API key for search functionality
-ENV JINA_API_KEY=jina_3982838bd63749a9b76257d3450f3af2Os2aCtQ0Sd4pxRN3awSRz7S4A9Zz
 ```
 
 Insert after the Chromium dependencies section (line 27).
 
-### 3. Main-Only Skill Support
+### 3. Environment Variable Passthrough
+
+**File:** `src/container-runner.ts`
+
+Add `JINA_API_KEY` to the container environment in `buildContainerArgs()` (around line 253):
+
+```typescript
+// Pass Jina API key for search functionality
+if (process.env.JINA_API_KEY) {
+  args.push('-e', `JINA_API_KEY=${process.env.JINA_API_KEY}`);
+}
+```
+
+**File:** `.env`
+
+Add the API key (not committed to version control):
+```
+JINA_API_KEY=your_jina_api_key_here
+```
+
+Get your key at https://jina.ai/?sui=apikey
+
+### 4. Main-Only Skill Support
 
 **File:** `src/container-runner.ts`
 
@@ -181,18 +200,21 @@ if (fs.existsSync(skillsSrc)) {
 | File | Change |
 |------|--------|
 | `container/skills/jina-cli/SKILL.md` | New file — skill documentation |
-| `container/Dockerfile` | Add Python/pip, install jina-cli, set API key |
-| `src/container-runner.ts` | Add `mainOnly` frontmatter support |
+| `container/Dockerfile` | Add Python/pip, install jina-cli |
+| `src/container-runner.ts` | Add `mainOnly` frontmatter support + JINA_API_KEY passthrough |
+| `.env` | Add JINA_API_KEY (not committed) |
 
 ## Verification
 
-1. Rebuild container: `./container/build.sh`
-2. Restart NanoClaw
-3. In main group, ask Mashbak to search for something
-4. Verify he uses `jina search` instead of browser automation
-5. In a non-main group, verify the skill is not available
+1. Add `JINA_API_KEY` to `.env`
+2. Rebuild container: `./container/build.sh`
+3. Restart NanoClaw
+4. In main group, ask Mashbak to search for something
+5. Verify he uses `jina search` instead of browser automation
+6. In a non-main group, verify the skill is not available
 
 ## Security Notes
 
-- The API key is baked into the container image (acceptable for personal use)
-- For multi-user deployments, consider passing the key via credential proxy instead
+- API key stored in `.env` (not committed to version control)
+- Key passed to container at runtime via environment variable
+- Container image contains no secrets
