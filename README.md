@@ -15,7 +15,7 @@ GabayAI helps shluchim with scheduling, answering questions, managing WhatsApp g
 Run this on a fresh Linux VM:
 
 ```bash
-curl -fsSL <gist-url> -o ~/setup-vm.sh && bash ~/setup-vm.sh
+curl -fsSL https://chabadlabs.github.io/.github/setup-vm.sh -o ~/setup-vm.sh && bash ~/setup-vm.sh
 ```
 
 The installer sets up your server, installs Claude Code, and configures everything you need.
