@@ -1,8 +1,8 @@
-# GabayAI
+# GabAI
 
 A personal Shlichus AI assistant that runs on WhatsApp, powered by [nanoclaw](https://github.com/qwibitai/nanoclaw).
 
-GabayAI helps shluchim with scheduling, answering questions, managing WhatsApp groups, voice transcription, and more — all through a conversational WhatsApp interface.
+GabAI helps shluchim with scheduling, answering questions, managing WhatsApp groups, voice transcription, and more — all through a conversational WhatsApp interface.
 
 ## Getting Started
 
@@ -25,7 +25,7 @@ The installer sets up your server, installs Claude Code, and configures everythi
 Open Claude Code and run:
 
 ```
-/gabayai-core:setup
+/gabai-core:setup
 ```
 
 This walks you through forking this repo, connecting WhatsApp, choosing skills, and starting your bot.
@@ -34,10 +34,10 @@ This walks you through forking this repo, connecting WhatsApp, choosing skills, 
 
 | Command | Description |
 |---------|-------------|
-| `/gabayai-core:setup` | Guided installation of your Shlichus bot |
-| `/gabayai-core:list-skills` | Browse available skills |
-| `/gabayai-core:install-skill <name>` | Install a skill into your bot |
-| `/gabayai-core:update` | Update to latest upstream and rebuild |
+| `/gabai-core:setup` | Guided installation of your Shlichus bot |
+| `/gabai-core:list-skills` | Browse available skills |
+| `/gabai-core:install-skill <name>` | Install a skill into your bot |
+| `/gabai-core:update` | Update to latest upstream and rebuild |
 
 ## Contributing Skills
 

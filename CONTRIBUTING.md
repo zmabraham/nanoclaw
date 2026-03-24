@@ -4,8 +4,8 @@
 
 1. **Check for existing work.** Search open PRs and issues before starting:
    ```bash
-   gh pr list --repo ChabadLabs/GabayAI --search "<your feature>"
-   gh issue list --repo ChabadLabs/GabayAI --search "<your feature>"
+   gh pr list --repo ChabadLabs/GabAI --search "<your feature>"
+   gh issue list --repo ChabadLabs/GabAI --search "<your feature>"
    ```
    If a related PR or issue exists, build on it rather than duplicating effort.
 
@@ -28,15 +28,15 @@ Add capabilities by merging a git branch. The SKILL.md contains setup instructio
 **Location:** `.claude/skills/` on `main` (instructions only), code on `skill/*` branch
 
 **How they work:**
-1. User runs `/gabayai-core:install-skill <name>`
+1. User runs `/gabai-core:install-skill <name>`
 2. The install command fetches and merges the `skill/<name>` branch
 3. Claude walks through interactive setup (env vars, etc.)
 
 **Contributing a feature skill:**
-1. Fork `ChabadLabs/GabayAI` and branch from `main`
+1. Fork `ChabadLabs/GabAI` and branch from `main`
 2. Make the code changes (new files, modified source, updated `package.json`, etc.)
 3. Add a SKILL.md in `.claude/skills/<name>/` with setup instructions — step 1 should be merging the branch
-4. Open a PR against `ChabadLabs/GabayAI`. We'll create the `skill/<name>` branch from your work
+4. Open a PR against `ChabadLabs/GabAI`. We'll create the `skill/<name>` branch from your work
 
 #### Operational skills (instruction-only)
 
@@ -54,7 +54,7 @@ Workflows and guides with no code changes. The SKILL.md is the entire skill.
 
 ## Pull Requests
 
-Open PRs against `ChabadLabs/GabayAI`, not the upstream `qwibitai/nanoclaw`.
+Open PRs against `ChabadLabs/GabAI`, not the upstream `qwibitai/nanoclaw`.
 
 Keep the description concise:
 - **What** — what the PR adds or changes

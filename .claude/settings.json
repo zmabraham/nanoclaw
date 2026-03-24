@@ -1,10 +1,10 @@
 {
   "extraKnownMarketplaces": {
-    "gabay-marketplace": {
-      "source": { "source": "github", "repo": "ChabadLabs/GabayMarketplace" }
+    "gabai-skills": {
+      "source": { "source": "github", "repo": "ChabadLabs/GabAIskills" }
     }
   },
   "enabledPlugins": {
-    "gabayai-core@gabay-marketplace": true
+    "gabai-core@gabai-skills": true
   }
 }
