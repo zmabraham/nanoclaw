@@ -43,7 +43,7 @@ class QdrantClientWrapper {
   private collectionName: string = '';
   private initialized: boolean = false;
 
-  private getClient(): QdrantClient {
+  getClient(): QdrantClient {
     if (!this.client) {
       const config = getConfig();
       this.client = new QdrantClient({ url: config.qdrant.url });

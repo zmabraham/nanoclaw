@@ -6,6 +6,10 @@ import {
   runBackfillIfNeeded,
   runIngestionCycle,
 } from './ingestion.js';
+import { akiflowSearch } from './akiflow-search.js';
+import Database from 'better-sqlite3';
+import * as path from 'path';
+import * as fs from 'fs';
 
 const app = express();
 
@@ -119,6 +123,41 @@ app.post('/api/search', async (req: Request, res: Response) => {
   }
 });
 
+// Akiflow entity search (tasks + events) — hybrid vector + keyword
+app.post('/api/akiflow/search', async (req: Request, res: Response) => {
+  try {
+    const { query, filters, limit } = req.body;
+    if (!query || typeof query !== 'string') {
+      res.status(400).json({ error: 'query field is required' });
+      return;
+    }
+    const openai = new (await import('openai')).default({
+      apiKey: process.env.OPENAI_API_KEY,
+    });
+    const akiflowDbPath = process.env.AKIFLOW_DB_PATH
+      || path.join(process.cwd(), '..', 'akiflow', 'akiflow.db');
+    let db: Database.Database | null = null;
+    if (fs.existsSync(akiflowDbPath)) {
+      db = new Database(akiflowDbPath, { readonly: true });
+      db.pragma('busy_timeout = 3000');
+    }
+    try {
+      const result = await akiflowSearch(
+        qdrantClient.getClient(),
+        openai,
+        db,
+        { query, filters, limit },
+      );
+      res.json(result);
+    } finally {
+      db?.close();
+    }
+  } catch (error: any) {
+    console.error('Akiflow search error:', error);
+    res.status(500).json({ error: 'Akiflow search failed' });
+  }
+});
+
 // Stats endpoint
 app.get('/api/stats', async (_req: Request, res: Response) => {
   try {
@@ -180,9 +219,10 @@ async function startServer() {
     app.listen(port, host, () => {
       console.log(`\nMessage Search RAG API running on http://${host}:${port}`);
       console.log(`  Health: GET /health`);
-      console.log(`  Search: POST /api/search`);
-      console.log(`  Stats:  GET /api/stats`);
-      console.log(`  Ingest: POST /api/ingest\n`);
+      console.log(`  Search:  POST /api/search`);
+      console.log(`  Akiflow: POST /api/akiflow/search`);
+      console.log(`  Stats:   GET /api/stats`);
+      console.log(`  Ingest:  POST /api/ingest\n`);
     });
   } catch (error) {
     console.error('Failed to start server:', error);
