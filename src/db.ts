@@ -633,7 +633,6 @@ export function setRegisteredGroup(jid: string, group: RegisteredGroup): void {
   );
 }
 
-
 export function deleteRegisteredGroup(jid: string): boolean {
   const result = db
     .prepare('DELETE FROM registered_groups WHERE jid = ?')
