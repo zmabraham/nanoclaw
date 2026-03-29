@@ -3,7 +3,9 @@ import { CursorManager } from './cursor-manager.js';
 
 describe('CursorManager', () => {
   let cm: CursorManager;
-  beforeEach(() => { cm = new CursorManager(); });
+  beforeEach(() => {
+    cm = new CursorManager();
+  });
 
   it('returns empty string for unknown chatJid', () => {
     expect(cm.get('unknown')).toBe('');
