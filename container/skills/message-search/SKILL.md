@@ -25,7 +25,7 @@ message-search:search() {
   local limit="${2:-10}"
   local payload
   payload=$(jq -n --arg q "$query" --argjson l "$limit" '{query: $q, limit: $l}')
-  curl -s http://host.docker.internal:3847/api/search \
+  curl -s --unix-socket /workspace/sockets/rag.sock http://localhost/api/search \
     -H "Content-Type: application/json" \
     -d "$payload" | jq .
 }
@@ -39,7 +39,7 @@ message-search:search-filtered() {
   local group_name="$2"
   local payload
   payload=$(jq -n --arg q "$query" --arg g "$group_name" '{query: $q, filters: {groups: [$g]}}')
-  curl -s http://host.docker.internal:3847/api/search \
+  curl -s --unix-socket /workspace/sockets/rag.sock http://localhost/api/search \
     -H "Content-Type: application/json" \
     -d "$payload" | jq .
 }
@@ -55,7 +55,7 @@ message-search:search-recent() {
   start_date=$(date -u -d "$days days ago" +%Y-%m-%dT%H:%M:%S.000Z 2>/dev/null || date -u -v-${days}d +%Y-%m-%dT%H:%M:%S.000Z)
   local payload
   payload=$(jq -n --arg q "$query" --arg s "$start_date" '{query: $q, filters: {dateRange: {start: $s}}}')
-  curl -s http://host.docker.internal:3847/api/search \
+  curl -s --unix-socket /workspace/sockets/rag.sock http://localhost/api/search \
     -H "Content-Type: application/json" \
     -d "$payload" | jq .
 }
@@ -65,7 +65,7 @@ message-search:search-recent() {
 
 ```bash
 message-search:stats() {
-  curl -s http://host.docker.internal:3847/api/stats | jq .
+  curl -s --unix-socket /workspace/sockets/rag.sock http://localhost/api/stats | jq .
 }
 ```
 
