@@ -21,6 +21,7 @@ const ConfigSchema = z.object({
   server: z.object({
     port: z.number(),
     host: z.string(),
+    socketPath: z.string().optional(),
   }),
   ingestion: z.object({
     batchSize: z.number(),
