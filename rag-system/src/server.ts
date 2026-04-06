@@ -191,6 +191,7 @@ app.post('/api/ingest', async (_req: Request, res: Response) => {
 
 // Start server
 let ingestionTimer: ReturnType<typeof setInterval> | null = null;
+let socketServer: ReturnType<typeof app.listen> | null = null;
 
 async function startServer() {
   try {
@@ -214,7 +215,7 @@ async function startServer() {
       `Periodic ingestion every ${config.ingestion.pollIntervalMs / 1000}s`,
     );
 
-    const { port, host } = config.server;
+    const { port, host, socketPath } = config.server;
 
     app.listen(port, host, () => {
       console.log(`\nMessage Search RAG API running on http://${host}:${port}`);
@@ -222,8 +223,22 @@ async function startServer() {
       console.log(`  Search:  POST /api/search`);
       console.log(`  Akiflow: POST /api/akiflow/search`);
       console.log(`  Stats:   GET /api/stats`);
-      console.log(`  Ingest:  POST /api/ingest\n`);
+      console.log(`  Ingest:  POST /api/ingest`);
     });
+
+    // Unix socket listener for container access (main-only via mount gating)
+    if (socketPath) {
+      const resolvedSocketPath = path.resolve(socketPath);
+      // Clean up stale socket from previous run
+      try { fs.unlinkSync(resolvedSocketPath); } catch {}
+      fs.mkdirSync(path.dirname(resolvedSocketPath), { recursive: true });
+
+      socketServer = app.listen(resolvedSocketPath, () => {
+        console.log(`  Socket: ${resolvedSocketPath}\n`);
+      });
+    } else {
+      console.log('');
+    }
   } catch (error) {
     console.error('Failed to start server:', error);
     process.exit(1);
@@ -234,6 +249,13 @@ async function startServer() {
 function shutdown() {
   console.log('\nShutting down...');
   if (ingestionTimer) clearInterval(ingestionTimer);
+  if (socketServer) {
+    socketServer.close();
+    const config = getConfig();
+    if (config.server.socketPath) {
+      try { fs.unlinkSync(path.resolve(config.server.socketPath)); } catch {}
+    }
+  }
   process.exit(0);
 }
 
