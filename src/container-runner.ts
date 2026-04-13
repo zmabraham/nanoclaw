@@ -275,9 +275,17 @@ function buildContainerArgs(
   }
 
   // Pass Google Workspace CLI credentials file path (mounted read-only in buildVolumeMounts)
-  const gwsCredentialsFile = path.join(process.cwd(), 'data', 'gws', 'credentials.json');
+  const gwsCredentialsFile = path.join(
+    process.cwd(),
+    'data',
+    'gws',
+    'credentials.json',
+  );
   if (fs.existsSync(gwsCredentialsFile)) {
-    args.push('-e', 'GOOGLE_WORKSPACE_CLI_CREDENTIALS_FILE=/home/node/.config/gws/credentials.json');
+    args.push(
+      '-e',
+      'GOOGLE_WORKSPACE_CLI_CREDENTIALS_FILE=/home/node/.config/gws/credentials.json',
+    );
   }
 
   // Runtime-specific args for host gateway resolution
