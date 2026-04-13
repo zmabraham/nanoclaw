@@ -214,12 +214,13 @@ function buildVolumeMounts(
   });
 
   // Google Workspace CLI credentials — mount if present so gws works inside the container
+  // Needs read-write for gws to cache discovery documents and create lock files
   const gwsConfigDir = path.join(projectRoot, 'data', 'gws');
   if (fs.existsSync(gwsConfigDir)) {
     mounts.push({
       hostPath: gwsConfigDir,
       containerPath: '/home/node/.config/gws',
-      readonly: true,
+      readonly: false,
     });
   }
 
@@ -271,6 +272,12 @@ function buildContainerArgs(
   // Pass Jina API key for search functionality (main group only uses this)
   if (process.env.JINA_API_KEY) {
     args.push('-e', `JINA_API_KEY=${process.env.JINA_API_KEY}`);
+  }
+
+  // Pass Google Workspace CLI credentials file path (mounted read-only in buildVolumeMounts)
+  const gwsCredentialsFile = path.join(process.cwd(), 'data', 'gws', 'credentials.json');
+  if (fs.existsSync(gwsCredentialsFile)) {
+    args.push('-e', 'GOOGLE_WORKSPACE_CLI_CREDENTIALS_FILE=/home/node/.config/gws/credentials.json');
   }
 
   // Runtime-specific args for host gateway resolution

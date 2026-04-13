@@ -351,10 +351,16 @@ export class GroupQueue {
   async shutdown(gracePeriodMs: number): Promise<void> {
     this.shuttingDown = true;
 
-    const activeProcesses: Array<{ proc: ChildProcess; containerName: string }> = [];
+    const activeProcesses: Array<{
+      proc: ChildProcess;
+      containerName: string;
+    }> = [];
     for (const [, state] of this.groups) {
       if (state.process && !state.process.killed && state.containerName) {
-        activeProcesses.push({ proc: state.process, containerName: state.containerName });
+        activeProcesses.push({
+          proc: state.process,
+          containerName: state.containerName,
+        });
       }
     }
 
@@ -364,7 +370,10 @@ export class GroupQueue {
     }
 
     logger.info(
-      { activeCount: activeProcesses.length, containers: activeProcesses.map((p) => p.containerName) },
+      {
+        activeCount: activeProcesses.length,
+        containers: activeProcesses.map((p) => p.containerName),
+      },
       'GroupQueue shutting down (stopping active containers)',
     );
 
@@ -388,7 +397,10 @@ export class GroupQueue {
             }
             const timer = setTimeout(() => {
               if (proc.exitCode === null && !proc.killed) {
-                logger.warn({ containerName }, 'Container did not exit in time, force killing');
+                logger.warn(
+                  { containerName },
+                  'Container did not exit in time, force killing',
+                );
                 try {
                   proc.kill('SIGKILL');
                 } catch {

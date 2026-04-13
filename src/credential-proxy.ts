@@ -43,6 +43,8 @@ export function startCredentialProxy(
   );
   const isHttps = upstreamUrl.protocol === 'https:';
   const makeRequest = isHttps ? httpsRequest : httpRequest;
+  // Preserve the base path from ANTHROPIC_BASE_URL (e.g., /api/anthropic)
+  const basePath = upstreamUrl.pathname.replace(/\/$/, '');
 
   return new Promise((resolve, reject) => {
     const server = createServer((req, res) => {
@@ -79,11 +81,14 @@ export function startCredentialProxy(
           }
         }
 
+        // Combine base path with request path
+        const fullPath = basePath + req.url;
+
         const upstream = makeRequest(
           {
             hostname: upstreamUrl.hostname,
             port: upstreamUrl.port || (isHttps ? 443 : 80),
-            path: req.url,
+            path: fullPath,
             method: req.method,
             headers,
           } as RequestOptions,
