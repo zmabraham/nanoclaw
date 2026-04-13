@@ -455,7 +455,6 @@ export async function processTaskIpc(
       }
       break;
 
-
     case 'refresh_groups':
       // Only main group can request a refresh
       if (isMain) {
