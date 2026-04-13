@@ -23,7 +23,41 @@ import {
   storeReaction,
   updateChatName,
 } from '../db.js';
-import { logger } from '../logger.js';
+import { logger as baseLogger } from '../logger.js';
+// Adapt built-in logger to baileys' pino-compatible ILogger interface
+interface BaileysLogger {
+  level: string;
+  child(obj: Record<string, unknown>): BaileysLogger;
+  trace(obj: unknown, msg?: string): void;
+  debug(obj: unknown, msg?: string): void;
+  info(obj: unknown, msg?: string): void;
+  warn(obj: unknown, msg?: string): void;
+  error(obj: unknown, msg?: string): void;
+}
+const logger: BaileysLogger = {
+  level: 'info',
+  child: () => logger as BaileysLogger,
+  trace: (obj: unknown, msg?: string) =>
+    typeof obj === 'string'
+      ? baseLogger.debug(obj)
+      : baseLogger.debug(obj as Record<string, unknown>, msg),
+  debug: (obj: unknown, msg?: string) =>
+    typeof obj === 'string'
+      ? baseLogger.debug(obj)
+      : baseLogger.debug(obj as Record<string, unknown>, msg),
+  info: (obj: unknown, msg?: string) =>
+    typeof obj === 'string'
+      ? baseLogger.info(obj)
+      : baseLogger.info(obj as Record<string, unknown>, msg),
+  warn: (obj: unknown, msg?: string) =>
+    typeof obj === 'string'
+      ? baseLogger.warn(obj)
+      : baseLogger.warn(obj as Record<string, unknown>, msg),
+  error: (obj: unknown, msg?: string) =>
+    typeof obj === 'string'
+      ? baseLogger.error(obj)
+      : baseLogger.error(obj as Record<string, unknown>, msg),
+};
 import {
   Channel,
   OnInboundMessage,
