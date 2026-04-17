@@ -10,6 +10,7 @@ import { z } from 'zod';
 import fs from 'fs';
 import path from 'path';
 import { CronExpressionParser } from 'cron-parser';
+import crypto from 'crypto';
 
 const IPC_DIR = '/workspace/ipc';
 const MESSAGES_DIR = path.join(IPC_DIR, 'messages');
@@ -64,6 +65,53 @@ server.tool(
     writeIpcFile(MESSAGES_DIR, data);
 
     return { content: [{ type: 'text' as const, text: 'Message sent.' }] };
+  },
+);
+
+server.tool(
+  'send_intercom_response',
+  'Reply to an intercom query from main. Use this instead of send_message when responding to a query inbox message. For directive responses, use the existing directive_response outbox flow.',
+  {
+    in_response_to: z.string().min(1).describe(
+      'The `id` field from the intercom inbox message you are responding to',
+    ),
+    status: z.enum(['completed', 'error']).describe('Outcome of the request'),
+    result: z.string().optional().describe('Answer or result text (for completed)'),
+    reason: z.string().optional().describe('Error explanation (for error status)'),
+    to_group: z.string().min(1).optional().describe(
+      'Target group folder — defaults to "main". Do not set to your own group folder.',
+    ),
+  },
+  async (args) => {
+    if (isMain) {
+      return {
+        content: [{ type: 'text' as const, text: 'Error: send_intercom_response is for non-main groups only.' }],
+        isError: true,
+      };
+    }
+    if (args.to_group === groupFolder) {
+      return {
+        content: [{ type: 'text' as const, text: 'Error: to_group must not equal your own group folder.' }],
+        isError: true,
+      };
+    }
+    const data = {
+      version: 1,
+      id: crypto.randomUUID(),
+      type: 'query_response',
+      from_group: groupFolder,
+      in_response_to: args.in_response_to,
+      to_group: args.to_group ?? 'main',
+      status: args.status,
+      result: args.result,
+      reason: args.reason,
+      timestamp: new Date().toISOString(),
+      // 24h default. Note: if the original query has a shorter TTL, this response
+      // may outlive it in main's inbox. Acceptable for now.
+      expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+    };
+    writeIpcFile(path.join(IPC_DIR, 'intercom', 'outbox'), data);
+    return { content: [{ type: 'text' as const, text: 'Intercom response sent.' }] };
   },
 );
 

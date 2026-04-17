@@ -5,6 +5,7 @@ import path from 'path';
 import { ASSISTANT_NAME, DATA_DIR, STORE_DIR } from './config.js';
 import { isValidGroupFolder } from './group-folder.js';
 import { logger } from './logger.js';
+import { isOwnerSender } from './owner-identity.js';
 import {
   NewMessage,
   RegisteredGroup,
@@ -82,6 +83,10 @@ function createSchema(database: Database.Database): void {
       container_config TEXT,
       requires_trigger INTEGER DEFAULT 1
     );
+    CREATE TABLE IF NOT EXISTS intercom_processed (
+      message_id TEXT PRIMARY KEY,
+      processed_at TEXT NOT NULL
+    );
   `);
 
   // Add context_mode column if it doesn't exist (migration for existing DBs)
@@ -145,6 +150,15 @@ function createSchema(database: Database.Database): void {
     );
   } catch {
     /* columns already exist */
+  }
+
+  // Add trust_tier column for intercom trust model (existing messages default to 'member')
+  try {
+    database.exec(
+      `ALTER TABLE messages ADD COLUMN trust_tier TEXT DEFAULT 'member'`,
+    );
+  } catch {
+    /* column already exists */
   }
 
   // Add reply context columns if they don't exist (migration for existing DBs)
@@ -284,8 +298,9 @@ export function setLastGroupSync(): void {
  * Only call this for registered groups where message history is needed.
  */
 export function storeMessage(msg: NewMessage): void {
+  const trustTier = isOwnerSender(msg.sender) ? 'owner' : 'member';
   db.prepare(
-    `INSERT OR REPLACE INTO messages (id, chat_jid, sender, sender_name, content, timestamp, is_from_me, is_bot_message, reply_to_message_id, reply_to_message_content, reply_to_sender_name) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT OR REPLACE INTO messages (id, chat_jid, sender, sender_name, content, timestamp, is_from_me, is_bot_message, reply_to_message_id, reply_to_message_content, reply_to_sender_name, trust_tier) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   ).run(
     msg.id,
     msg.chat_jid,
@@ -298,6 +313,7 @@ export function storeMessage(msg: NewMessage): void {
     msg.reply_to_message_id ?? null,
     msg.reply_to_message_content ?? null,
     msg.reply_to_sender_name ?? null,
+    trustTier,
   );
 }
 
@@ -313,9 +329,13 @@ export function storeMessageDirect(msg: {
   timestamp: string;
   is_from_me: boolean;
   is_bot_message?: boolean;
+  reply_to_message_id?: string;
+  reply_to_message_content?: string;
+  reply_to_sender_name?: string;
 }): void {
+  const trustTier = isOwnerSender(msg.sender) ? 'owner' : 'member';
   db.prepare(
-    `INSERT OR REPLACE INTO messages (id, chat_jid, sender, sender_name, content, timestamp, is_from_me, is_bot_message) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT OR REPLACE INTO messages (id, chat_jid, sender, sender_name, content, timestamp, is_from_me, is_bot_message, reply_to_message_id, reply_to_message_content, reply_to_sender_name, trust_tier) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   ).run(
     msg.id,
     msg.chat_jid,
@@ -325,6 +345,10 @@ export function storeMessageDirect(msg: {
     msg.timestamp,
     msg.is_from_me ? 1 : 0,
     msg.is_bot_message ? 1 : 0,
+    msg.reply_to_message_id ?? null,
+    msg.reply_to_message_content ?? null,
+    msg.reply_to_sender_name ?? null,
+    trustTier,
   );
 }
 
@@ -343,7 +367,7 @@ export function getNewMessages(
   const sql = `
     SELECT * FROM (
       SELECT id, chat_jid, sender, sender_name, content, timestamp, is_from_me,
-             reply_to_message_id, reply_to_message_content, reply_to_sender_name
+             reply_to_message_id, reply_to_message_content, reply_to_sender_name, trust_tier
       FROM messages
       WHERE timestamp > ? AND chat_jid IN (${placeholders})
         AND is_bot_message = 0 AND content NOT LIKE ?
@@ -377,7 +401,7 @@ export function getMessagesSince(
   const sql = `
     SELECT * FROM (
       SELECT id, chat_jid, sender, sender_name, content, timestamp, is_from_me,
-             reply_to_message_id, reply_to_message_content, reply_to_sender_name
+             reply_to_message_id, reply_to_message_content, reply_to_sender_name, trust_tier
       FROM messages
       WHERE chat_jid = ? AND timestamp > ?
         AND is_bot_message = 0 AND content NOT LIKE ?
@@ -412,6 +436,51 @@ export function getMessageContentById(
     .prepare(`SELECT content FROM messages WHERE id = ? AND chat_jid = ?`)
     .get(id, chatJid) as { content: string } | undefined;
   return row?.content;
+}
+
+/**
+ * Look up trust tier by message ID and chat JID.
+ * Returns null if message not found (caller treats as rejection).
+ */
+export function getMessageTrustTier(
+  messageId: string,
+): 'owner' | 'member' | null {
+  const row = db
+    .prepare(
+      `SELECT trust_tier FROM messages WHERE id = ?`,
+    )
+    .get(messageId) as { trust_tier: string } | undefined;
+  if (!row) return null;
+  return row.trust_tier as 'owner' | 'member';
+}
+
+// --- Intercom dedup tracking ---
+
+export function isIntercomProcessed(messageId: string): boolean {
+  const row = db
+    .prepare('SELECT 1 FROM intercom_processed WHERE message_id = ?')
+    .get(messageId);
+  return row !== undefined;
+}
+
+export function markIntercomProcessed(messageId: string): void {
+  db.prepare(
+    'INSERT OR IGNORE INTO intercom_processed (message_id, processed_at) VALUES (?, ?)',
+  ).run(messageId, new Date().toISOString());
+}
+
+/** Delete intercom_processed entries older than retentionDays. */
+export function pruneIntercomProcessed(retentionDays: number): void {
+  const cutoff = new Date(Date.now() - retentionDays * 24 * 60 * 60 * 1000).toISOString();
+  const result = db.prepare(
+    'DELETE FROM intercom_processed WHERE processed_at < ?',
+  ).run(cutoff);
+  if (result.changes > 0) {
+    // Lazy import to avoid circular dep at module level
+    import('./logger.js').then(({ logger }) =>
+      logger.debug({ pruned: result.changes }, 'Pruned old intercom_processed entries'),
+    );
+  }
 }
 
 export function createTask(

@@ -11,6 +11,9 @@ const envConfig = readEnvFile([
   'ONECLI_URL',
   'ONECLI_API_KEY',
   'TZ',
+  'LATE_FINALIZE_MAX_RETRIES',
+  'LATE_FINALIZE_BACKOFF_MS',
+  'LATE_FINALIZE_EXHAUST_COOLDOWN_MS',
 ]);
 
 export const ASSISTANT_NAME =
@@ -83,6 +86,14 @@ export function getTriggerPattern(trigger?: string): RegExp {
 
 export const TRIGGER_PATTERN = buildTriggerPattern(DEFAULT_TRIGGER);
 
+// Retention/retry/backoff keys where 0 is a legitimate operator setting.
+function toNonNegativeInt(raw: string | undefined, fallback: number): number {
+  if (!raw) return fallback;
+  const n = parseInt(raw, 10);
+  if (!Number.isFinite(n) || n < 0) return fallback;
+  return n;
+}
+
 // Timezone for scheduled tasks, message formatting, etc.
 // Validates each candidate is a real IANA identifier before accepting.
 function resolveConfigTimezone(): string {
@@ -97,3 +108,16 @@ function resolveConfigTimezone(): string {
   return 'UTC';
 }
 export const TIMEZONE = resolveConfigTimezone();
+
+export const LATE_FINALIZE_MAX_RETRIES = toNonNegativeInt(
+  process.env.LATE_FINALIZE_MAX_RETRIES || envConfig.LATE_FINALIZE_MAX_RETRIES,
+  3,
+);
+export const LATE_FINALIZE_BACKOFF_MS = toNonNegativeInt(
+  process.env.LATE_FINALIZE_BACKOFF_MS || envConfig.LATE_FINALIZE_BACKOFF_MS,
+  500,
+);
+export const LATE_FINALIZE_EXHAUST_COOLDOWN_MS = toNonNegativeInt(
+  process.env.LATE_FINALIZE_EXHAUST_COOLDOWN_MS || envConfig.LATE_FINALIZE_EXHAUST_COOLDOWN_MS,
+  30_000,
+);

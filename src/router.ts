@@ -12,23 +12,23 @@ export function escapeXml(s: string): string {
 
 export function formatMessages(
   messages: NewMessage[],
-  timezone: string,
+  timezone: string = 'UTC',
 ): string {
   const lines = messages.map((m) => {
     const displayTime = formatLocalTime(m.timestamp, timezone);
+    const trustAttr = m.trust_tier ? ` trust="${escapeXml(m.trust_tier)}"` : '';
     const replyAttr = m.reply_to_message_id
       ? ` reply_to="${escapeXml(m.reply_to_message_id)}"`
       : '';
-    const replySnippet =
-      m.reply_to_message_content && m.reply_to_sender_name
-        ? `\n  <quoted_message from="${escapeXml(m.reply_to_sender_name)}">${escapeXml(m.reply_to_message_content)}</quoted_message>`
-        : '';
-    return `<message sender="${escapeXml(m.sender_name)}" time="${escapeXml(displayTime)}"${replyAttr}>${replySnippet}${escapeXml(m.content)}</message>`;
+    const replyTag = m.reply_to_message_content
+      ? `\n  <quoted_message from="${escapeXml(m.reply_to_sender_name || '')}">${escapeXml(m.reply_to_message_content)}</quoted_message>`
+      : '';
+    if (replyTag) {
+      return `<message id="${escapeXml(m.id)}" sender="${escapeXml(m.sender_name)}" time="${escapeXml(displayTime)}"${trustAttr}${replyAttr}>${replyTag}\n  ${escapeXml(m.content)}\n</message>`;
+    }
+    return `<message id="${escapeXml(m.id)}" sender="${escapeXml(m.sender_name)}" time="${escapeXml(displayTime)}"${trustAttr}${replyAttr}>${escapeXml(m.content)}</message>`;
   });
-
-  const header = `<context timezone="${escapeXml(timezone)}" />\n`;
-
-  return `${header}<messages>\n${lines.join('\n')}\n</messages>`;
+  return `<context timezone="${escapeXml(timezone)}" />\n<messages>\n${lines.join('\n')}\n</messages>`;
 }
 
 export function stripInternalTags(text: string): string {

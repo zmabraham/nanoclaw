@@ -5,9 +5,28 @@ import { CronExpressionParser } from 'cron-parser';
 
 import { DATA_DIR, IPC_POLL_INTERVAL, TIMEZONE } from './config.js';
 import { AvailableGroup } from './container-runner.js';
-import { createTask, deleteTask, getTaskById, updateTask } from './db.js';
+import {
+  createTask,
+  deleteTask,
+  getTaskById,
+  isIntercomProcessed,
+  markIntercomProcessed,
+  pruneIntercomProcessed,
+  updateTask,
+} from './db.js';
 import { isValidGroupFolder } from './group-folder.js';
+import {
+  checkAndTriggerInboxInvocations,
+  processIntercomOutboxes,
+  runIntercomGarbageCollection,
+} from './intercom.js';
+import { cleanupStaleSessions } from './intercom-sync.js';
+import {
+  isGroupWhitelisted,
+  loadIntercomWhitelist,
+} from './intercom-whitelist.js';
 import { logger } from './logger.js';
+import { verifyIpcTrust } from './owner-identity.js';
 import { RegisteredGroup } from './types.js';
 import { getIpcHandler } from './ipc-handlers.js';
 import {
@@ -29,10 +48,31 @@ export interface IpcDeps {
     registeredJids: Set<string>,
   ) => void;
   onTasksChanged: () => void;
+  /** Check if a container is currently running for a given group folder. */
+  isContainerRunningByFolder?: (groupFolder: string) => boolean;
+  /** Enqueue an intercom-triggered invocation for a group. */
+  enqueueIntercomInvocation?: (groupFolder: string, pendingCount: number) => void;
+  /** Notify an idle-waiting container about pending intercom messages. Returns true if piped. */
+  notifyIdleContainer?: (groupFolder: string, pendingCount: number) => boolean;
 }
 
 let ipcWatcherRunning = false;
 const RECOVERY_INTERVAL_MS = 60_000;
+
+/**
+ * Create intercom/{outbox,inbox,expired,errors} directories under a group's
+ * IPC directory.  Idempotent — safe to call on every poll cycle or at startup.
+ */
+export function ensureIntercomDirs(
+  ipcBaseDir: string,
+  groupFolder: string,
+): void {
+  for (const sub of ['outbox', 'inbox', 'expired', 'errors']) {
+    fs.mkdirSync(path.join(ipcBaseDir, groupFolder, 'intercom', sub), {
+      recursive: true,
+    });
+  }
+}
 
 export function startIpcWatcher(deps: IpcDeps): void {
   if (ipcWatcherRunning) {
@@ -43,6 +83,32 @@ export function startIpcWatcher(deps: IpcDeps): void {
 
   const ipcBaseDir = path.join(DATA_DIR, 'ipc');
   fs.mkdirSync(ipcBaseDir, { recursive: true });
+
+  // Ensure intercom directories exist for all discovered groups (including main)
+  try {
+    const existingFolders = fs.readdirSync(ipcBaseDir).filter((f) => {
+      try {
+        return fs.statSync(path.join(ipcBaseDir, f)).isDirectory() && f !== 'errors';
+      } catch { return false; }
+    });
+    for (const folder of existingFolders) {
+      ensureIntercomDirs(ipcBaseDir, folder);
+    }
+    // Always ensure main has intercom dirs even if its IPC folder doesn't exist yet
+    if (!existingFolders.includes('main')) {
+      ensureIntercomDirs(ipcBaseDir, 'main');
+    }
+    logger.info(
+      { count: existingFolders.length },
+      'Intercom directories initialized for existing groups',
+    );
+  } catch (err) {
+    logger.error({ err }, 'Failed to initialize intercom directories');
+  }
+
+  // Clean up stale sync session sockets from previous runs
+  cleanupStaleSessions(ipcBaseDir);
+
   let lastRecoveryTime = Date.now();
 
   const processIpcFiles = async () => {
@@ -152,6 +218,41 @@ export function startIpcWatcher(deps: IpcDeps): void {
         }
       } catch (err) {
         logger.error({ err, sourceGroup }, 'Error reading IPC tasks directory');
+      }
+    }
+
+    // Process intercom outboxes and garbage-collect expired messages
+    try {
+      const whitelist = loadIntercomWhitelist();
+      await processIntercomOutboxes(ipcBaseDir, {
+        getWhitelist: () => whitelist,
+        verifyTrust: verifyIpcTrust,
+        isProcessed: isIntercomProcessed,
+        markProcessed: markIntercomProcessed,
+        isWhitelisted: isGroupWhitelisted,
+        isSyncSessionAllowed: (groupFolder: string) =>
+          whitelist.groups[groupFolder]?.sync_sessions === true,
+      });
+      runIntercomGarbageCollection(
+        ipcBaseDir,
+        whitelist.expired_retention_days,
+        () => pruneIntercomProcessed(whitelist.expired_retention_days),
+      );
+    } catch (err) {
+      logger.error({ err }, 'Error during intercom processing');
+    }
+
+    // Check for pending inbox messages in cold groups and trigger debounced invocations
+    if (deps.isContainerRunningByFolder && deps.enqueueIntercomInvocation) {
+      try {
+        checkAndTriggerInboxInvocations(
+          ipcBaseDir,
+          deps.isContainerRunningByFolder,
+          deps.enqueueIntercomInvocation,
+          deps.notifyIdleContainer,
+        );
+      } catch (err) {
+        logger.error({ err }, 'Error during intercom inbox invocation check');
       }
     }
 
@@ -470,6 +571,9 @@ export async function processTaskIpc(
           requiresTrigger: data.requiresTrigger,
           isMain: existingGroup?.isMain,
         });
+        // Ensure intercom directories exist for the newly registered group
+        const ipcBase = path.join(DATA_DIR, 'ipc');
+        ensureIntercomDirs(ipcBase, data.folder);
       } else {
         logger.warn(
           { data },

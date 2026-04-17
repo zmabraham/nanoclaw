@@ -49,6 +49,9 @@ import {
 import { GroupQueue } from './group-queue.js';
 import { resolveGroupFolderPath } from './group-folder.js';
 import { startIpcWatcher } from './ipc.js';
+// Side-effect imports: register IPC handlers before dispatch
+import './ipc-handlers/whitelist-edit.js';
+import { clearPendingInboxInvocations } from './intercom.js';
 import { findChannel, formatMessages, formatOutbound } from './router.js';
 import {
   restoreRemoteControl,
@@ -156,6 +159,7 @@ function registerGroup(jid: string, group: RegisteredGroup): void {
 
   registeredGroups[jid] = group;
   setRegisteredGroup(jid, group);
+  queue.registerGroupFolder(jid, group.folder);
 
   // Create group folder
   fs.mkdirSync(path.join(groupDir, 'logs'), { recursive: true });
@@ -218,7 +222,7 @@ export function _setRegisteredGroups(
  * Process all pending messages for a group.
  * Called by the GroupQueue when it's this group's turn.
  */
-async function processGroupMessages(chatJid: string): Promise<boolean> {
+async function processGroupMessages(chatJid: string, rowIds?: string[]): Promise<boolean> {
   const group = registeredGroups[chatJid];
   if (!group) return true;
 
@@ -574,6 +578,11 @@ async function main(): Promise<void> {
   logger.info('Database initialized');
   loadState();
 
+  // Seed queue's reverse folder→JID map after restart so intercom dispatch works.
+  for (const [jid, group] of Object.entries(registeredGroups)) {
+    queue.registerGroupFolder(jid, group.folder);
+  }
+
   // Ensure OneCLI agents exist for all registered groups.
   // Recovers from missed creates (e.g. OneCLI was down at registration time).
   for (const [jid, group] of Object.entries(registeredGroups)) {
@@ -585,6 +594,7 @@ async function main(): Promise<void> {
   // Graceful shutdown handlers
   const shutdown = async (signal: string) => {
     logger.info({ signal }, 'Shutdown signal received');
+    clearPendingInboxInvocations();
     await queue.shutdown(10000);
     for (const ch of channels) await ch.disconnect();
     process.exit(0);
@@ -747,9 +757,65 @@ async function main(): Promise<void> {
         writeTasksSnapshot(group.folder, group.isMain === true, taskRows);
       }
     },
+    isContainerRunningByFolder: (groupFolder) => {
+      // Map folder → JID and check queue state
+      for (const [jid, group] of Object.entries(registeredGroups)) {
+        if (group.folder === groupFolder) {
+          return queue.isActive(jid);
+        }
+      }
+      return false;
+    },
+    enqueueIntercomInvocation: (groupFolder, pendingCount) => {
+      // Find the registered group by folder
+      const entry = Object.entries(registeredGroups).find(
+        ([_, g]) => g.folder === groupFolder,
+      );
+      if (!entry) {
+        logger.warn(
+          { groupFolder },
+          'Cannot enqueue intercom invocation: group not registered',
+        );
+        return;
+      }
+      const [chatJid, group] = entry;
+      const intercomPrompt = `You have ${pendingCount} pending intercom messages. Read your inbox at \`/workspace/ipc/intercom/inbox/\` and process them.`;
+      const taskId = `intercom-inbox-${groupFolder}-${Date.now()}`;
+      const channel = findChannel(channels, chatJid);
+      queue.enqueueTask(chatJid, taskId, async () => {
+        await runAgent(group, intercomPrompt, chatJid, async (result) => {
+          // Relay intercom results to the chat
+          if (result.result) {
+            const raw = typeof result.result === 'string'
+              ? result.result
+              : JSON.stringify(result.result);
+            const text = raw.replace(/<internal>[\s\S]*?<\/internal>/g, '').trim();
+            if (text && channel) {
+              await channel.sendMessage(chatJid, text);
+            }
+          }
+          // Close stdin to terminate the container — intercom tasks are
+          // fire-and-forget. Without this, the container idles and blocks
+          // subsequent chat messages from being processed.
+          queue.closeStdin(chatJid);
+        });
+      });
+    },
+    notifyIdleContainer: (groupFolder, pendingCount) => {
+      const entry = Object.entries(registeredGroups).find(
+        ([_, g]) => g.folder === groupFolder,
+      );
+      if (!entry) return false;
+      const [chatJid] = entry;
+      const prompt = `You have ${pendingCount} pending intercom messages. Read your inbox at \`/workspace/ipc/intercom/inbox/\` and process them.`;
+      return queue.sendMessage(chatJid, prompt);
+    },
   });
   startSessionCleanup();
   queue.setProcessMessagesFn(processGroupMessages);
+  queue.setProcessPendingRowsFn((chatJid, rowIds) =>
+    processGroupMessages(chatJid, rowIds),
+  );
   recoverPendingMessages();
   startMessageLoop().catch((err) => {
     logger.fatal({ err }, 'Message loop crashed unexpectedly');
