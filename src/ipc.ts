@@ -62,11 +62,16 @@ const RECOVERY_INTERVAL_MS = 60_000;
 /**
  * Create intercom/{outbox,inbox,expired,errors} directories under a group's
  * IPC directory.  Idempotent — safe to call on every poll cycle or at startup.
+ * Rejects invalid/unsafe group folder names to prevent path traversal.
  */
 export function ensureIntercomDirs(
   ipcBaseDir: string,
   groupFolder: string,
 ): void {
+  if (!isValidGroupFolder(groupFolder)) {
+    logger.warn({ groupFolder }, 'Rejected invalid group folder in ensureIntercomDirs');
+    return;
+  }
   for (const sub of ['outbox', 'inbox', 'expired', 'errors']) {
     fs.mkdirSync(path.join(ipcBaseDir, groupFolder, 'intercom', sub), {
       recursive: true,
@@ -88,7 +93,10 @@ export function startIpcWatcher(deps: IpcDeps): void {
   try {
     const existingFolders = fs.readdirSync(ipcBaseDir).filter((f) => {
       try {
-        return fs.statSync(path.join(ipcBaseDir, f)).isDirectory() && f !== 'errors';
+        return (
+          fs.statSync(path.join(ipcBaseDir, f)).isDirectory() &&
+          isValidGroupFolder(f)
+        );
       } catch { return false; }
     });
     for (const folder of existingFolders) {

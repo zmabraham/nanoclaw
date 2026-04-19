@@ -29,13 +29,6 @@ const GROUP_MESSAGE_TYPES = new Set([
   'query_response',
 ]);
 
-/** Additional types allowed from main's outbox (main is trusted — be permissive) */
-const MAIN_EXTRA_TYPES = new Set([
-  'directive',
-  'approval_result',
-  'query_response',
-]);
-
 export interface IntercomMessage {
   version: number;
   id: string;

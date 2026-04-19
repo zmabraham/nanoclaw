@@ -31,9 +31,15 @@ function writeIpcResponse(
   requestId: string,
   response: object,
 ): void {
+  // Sanitize requestId to prevent path traversal (mirrors writeIpcErrorResponse)
+  const safeId = path.basename(requestId);
+  if (!safeId || safeId !== requestId) {
+    logger.warn({ requestId }, 'Rejected unsafe requestId in whitelist_edit response');
+    return;
+  }
   const responsesDir = path.join(DATA_DIR, 'ipc', sourceGroup, 'responses');
   fs.mkdirSync(responsesDir, { recursive: true });
-  const responseFile = path.join(responsesDir, `${requestId}.json`);
+  const responseFile = path.join(responsesDir, `${safeId}.json`);
   const tempFile = `${responseFile}.tmp`;
   fs.writeFileSync(tempFile, JSON.stringify(response));
   fs.renameSync(tempFile, responseFile);
