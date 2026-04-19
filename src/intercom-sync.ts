@@ -3,7 +3,7 @@ import fs from 'fs';
 import net from 'net';
 import path from 'path';
 
-import { atomicWriteJson, inboxFilename } from './intercom-utils.js';
+import { inboxFilename, safeAtomicWriteJson } from './intercom-utils.js';
 import { logger } from './logger.js';
 
 // ---------------------------------------------------------------------------
@@ -19,9 +19,12 @@ export interface SyncSessionProxy {
 
 export interface SyncSession {
   id: string;
+  ipcBaseDir: string;
   groupFolder: string;
   groupSocketPath: string;
   mainSocketPath: string;
+  groupInboxDir: string;
+  mainInboxDir: string;
   proxy: SyncSessionProxy;
   timeout: NodeJS.Timeout;
   transcript: string[];
@@ -84,9 +87,12 @@ export function createSyncSession(
 
   const session: SyncSession = {
     id: sessionId,
+    ipcBaseDir,
     groupFolder,
     groupSocketPath,
     mainSocketPath,
+    groupInboxDir: path.join(ipcBaseDir, groupFolder, 'intercom', 'inbox'),
+    mainInboxDir: path.join(ipcBaseDir, 'main', 'intercom', 'inbox'),
     proxy,
     timeout,
     transcript: [],
@@ -168,40 +174,45 @@ export function terminateSession(sessionId: string, reason: string): void {
   }
 
   // Write transcript to group's inbox
-  const groupInboxDir = path
-    .dirname(session.groupSocketPath)
-    .replace(/\/intercom$/, '/intercom/inbox');
-  fs.mkdirSync(groupInboxDir, { recursive: true });
-
+  fs.mkdirSync(session.groupInboxDir, { recursive: true });
   const transcriptFilename = `${Date.now()}-${sessionId}.json`;
-  const transcriptPath = path.join(groupInboxDir, transcriptFilename);
-  atomicWriteJson(transcriptPath, {
-    type: 'session_transcript',
-    session_id: sessionId,
-    lines: session.transcript,
-    terminated_at: new Date().toISOString(),
-    reason,
-  });
+  const transcriptPath = path.join(session.groupInboxDir, transcriptFilename);
+  safeAtomicWriteJson(
+    transcriptPath,
+    {
+      type: 'session_transcript',
+      session_id: sessionId,
+      lines: session.transcript,
+      terminated_at: new Date().toISOString(),
+      reason,
+    },
+    session.ipcBaseDir,
+  );
 
   // Write session_terminated to group inbox
-  atomicWriteJson(path.join(groupInboxDir, inboxFilename()), {
-    type: 'session_terminated',
-    session_id: sessionId,
-    reason,
-    transcript_file: transcriptFilename,
-  });
+  safeAtomicWriteJson(
+    path.join(session.groupInboxDir, inboxFilename()),
+    {
+      type: 'session_terminated',
+      session_id: sessionId,
+      reason,
+      transcript_file: transcriptFilename,
+    },
+    session.ipcBaseDir,
+  );
 
   // Write session_terminated to main inbox (no transcript_file — main
   // can't read the group's inbox where the transcript lives)
-  const mainInboxDir = path
-    .dirname(session.mainSocketPath)
-    .replace(/\/intercom$/, '/intercom/inbox');
-  fs.mkdirSync(mainInboxDir, { recursive: true });
-  atomicWriteJson(path.join(mainInboxDir, inboxFilename()), {
-    type: 'session_terminated',
-    session_id: sessionId,
-    reason,
-  });
+  fs.mkdirSync(session.mainInboxDir, { recursive: true });
+  safeAtomicWriteJson(
+    path.join(session.mainInboxDir, inboxFilename()),
+    {
+      type: 'session_terminated',
+      session_id: sessionId,
+      reason,
+    },
+    session.ipcBaseDir,
+  );
 
   // Remove from stores
   activeSessions.delete(groupFolder);

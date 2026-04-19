@@ -5,11 +5,7 @@ import path from 'path';
 
 import { isValidGroupFolder } from './group-folder.js';
 import { createSyncSession, getActiveSession } from './intercom-sync.js';
-import {
-  atomicWriteJson,
-  inboxFilename,
-  safeAtomicWriteJson,
-} from './intercom-utils.js';
+import { inboxFilename, safeAtomicWriteJson } from './intercom-utils.js';
 import { logger } from './logger.js';
 
 // ---------------------------------------------------------------------------
@@ -279,14 +275,18 @@ export async function processIntercomOutboxes(
         );
         const errorMsg = `Unrecognized version ${msg.version}. Expected ${CURRENT_VERSION}.`;
         // Write error detail to errors/ for debugging
-        atomicWriteJson(path.join(errorsDir, `error-${path.basename(file)}`), {
-          version: CURRENT_VERSION,
-          id: crypto.randomUUID(),
-          type: 'error',
-          in_response_to: msg.id,
-          error: 'unsupported_version',
-          message: errorMsg,
-        });
+        safeAtomicWriteJson(
+          path.join(errorsDir, `error-${path.basename(file)}`),
+          {
+            version: CURRENT_VERSION,
+            id: crypto.randomUUID(),
+            type: 'error',
+            in_response_to: msg.id,
+            error: 'unsupported_version',
+            message: errorMsg,
+          },
+          ipcBaseDir,
+        );
         // Also notify the container via inbox so it gets feedback
         writeRejection(
           inboxDir,
@@ -555,11 +555,15 @@ async function handleSyncSessionRequest(
 
   // 5. Write sync_session_ready to group's inbox
   fs.mkdirSync(inboxDir, { recursive: true });
-  atomicWriteJson(path.join(inboxDir, inboxFilename()), {
-    type: 'sync_session_ready',
-    session_id: session.id,
-    socket_path: `/workspace/ipc/intercom/session-${session.id}.sock`,
-  });
+  safeAtomicWriteJson(
+    path.join(inboxDir, inboxFilename()),
+    {
+      type: 'sync_session_ready',
+      session_id: session.id,
+      socket_path: `/workspace/ipc/intercom/session-${session.id}.sock`,
+    },
+    ipcBaseDir,
+  );
 
   // 6. Invoke main with session context
   if (deps.invokeMainForSync) {

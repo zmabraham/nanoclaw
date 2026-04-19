@@ -42,10 +42,7 @@ function writeIpcResponse(
   fs.mkdirSync(responsesDir, { recursive: true });
   try {
     // Defense in depth: reject symlinked response dirs that escape DATA_DIR/ipc/{group}
-    assertWithinBase(
-      responsesDir,
-      path.join(DATA_DIR, 'ipc', sourceGroup),
-    );
+    assertWithinBase(responsesDir, path.join(DATA_DIR, 'ipc', sourceGroup));
   } catch (err) {
     logger.warn(
       { sourceGroup, err },
