@@ -791,11 +791,11 @@ async function main(): Promise<void> {
               await channel.sendMessage(chatJid, text);
             }
           }
-          // Close stdin to terminate the container — intercom tasks are
-          // fire-and-forget. Without this, the container idles and blocks
-          // subsequent chat messages from being processed.
-          queue.closeStdin(chatJid);
         });
+        // Close stdin to terminate the container — intercom tasks are
+        // fire-and-forget. Called after runAgent returns so the sentinel
+        // is written exactly once, not per streamed event.
+        queue.closeStdin(chatJid);
       });
     },
     notifyIdleContainer: (groupFolder, pendingCount) => {
