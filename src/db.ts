@@ -87,6 +87,8 @@ function createSchema(database: Database.Database): void {
       message_id TEXT PRIMARY KEY,
       processed_at TEXT NOT NULL
     );
+    CREATE INDEX IF NOT EXISTS idx_intercom_processed_at
+      ON intercom_processed(processed_at);
   `);
 
   // Add context_mode column if it doesn't exist (migration for existing DBs)

@@ -66,11 +66,9 @@ export interface IntercomDeps {
 // Helpers
 // ---------------------------------------------------------------------------
 
-/** IPC base directory — set once at the start of processIntercomOutboxes. */
-let _ipcBaseDir = '';
-
 /** Write an error/rejection message to a group's intercom inbox. */
 function writeRejection(
+  ipcBaseDir: string,
   inboxDir: string,
   originalId: string,
   error: string,
@@ -88,7 +86,7 @@ function writeRejection(
   safeAtomicWriteJson(
     path.join(inboxDir, inboxFilename()),
     payload,
-    _ipcBaseDir,
+    ipcBaseDir,
   );
 }
 
@@ -223,7 +221,6 @@ export async function processIntercomOutboxes(
   ipcBaseDir: string,
   deps: IntercomDeps,
 ): Promise<void> {
-  _ipcBaseDir = ipcBaseDir;
   let groupFolders: string[];
   try {
     const entries = await fsp.readdir(ipcBaseDir, { withFileTypes: true });
@@ -289,6 +286,7 @@ export async function processIntercomOutboxes(
         );
         // Also notify the container via inbox so it gets feedback
         writeRejection(
+          ipcBaseDir,
           inboxDir,
           msg.id || 'unknown',
           'unsupported_version',
@@ -379,6 +377,7 @@ async function processGroupOutbox(
       'Intercom message from non-whitelisted group',
     );
     writeRejection(
+      ipcBaseDir,
       inboxDir,
       msg.id,
       'group_not_whitelisted',
@@ -412,6 +411,7 @@ async function processGroupOutbox(
       'Intercom message missing source_message_id — rejecting',
     );
     writeRejection(
+      ipcBaseDir,
       inboxDir,
       msg.id,
       'missing_source_message_id',
@@ -429,6 +429,7 @@ async function processGroupOutbox(
       'Intercom trust verification failed',
     );
     writeRejection(
+      ipcBaseDir,
       inboxDir,
       msg.id,
       'trust_verification_failed',
@@ -499,6 +500,7 @@ async function handleSyncSessionRequest(
       'Sync session request requires owner trust',
     );
     writeRejection(
+      ipcBaseDir,
       inboxDir,
       msg.id,
       'owner_trust_required',
@@ -516,6 +518,7 @@ async function handleSyncSessionRequest(
   if (deps.isSyncSessionAllowed && !deps.isSyncSessionAllowed(folder)) {
     logger.warn({ folder, id: msg.id }, 'Group not allowed for sync sessions');
     writeRejection(
+      ipcBaseDir,
       inboxDir,
       msg.id,
       'sync_sessions_not_allowed',
@@ -536,6 +539,7 @@ async function handleSyncSessionRequest(
       'Sync session already active for group',
     );
     writeRejection(
+      ipcBaseDir,
       inboxDir,
       msg.id,
       'session_already_active',
@@ -628,6 +632,7 @@ async function handleGroupQueryResponse(
       'query_response references unknown query — rejecting to sender inbox',
     );
     writeRejection(
+      ipcBaseDir,
       inboxDir,
       msg.id,
       'unknown_query_reference',
@@ -650,6 +655,7 @@ async function handleGroupQueryResponse(
       'query_response targets sender own inbox — rejecting',
     );
     writeRejection(
+      ipcBaseDir,
       inboxDir,
       msg.id,
       'self_routing_rejected',
@@ -670,6 +676,7 @@ async function handleGroupQueryResponse(
       'query_response target not whitelisted — rejecting',
     );
     writeRejection(
+      ipcBaseDir,
       inboxDir,
       msg.id,
       'target_not_whitelisted',
@@ -726,6 +733,7 @@ async function processMainOutbox(
         'Main directive target not whitelisted',
       );
       writeRejection(
+        ipcBaseDir,
         mainInboxDir,
         msg.id,
         'target_not_whitelisted',

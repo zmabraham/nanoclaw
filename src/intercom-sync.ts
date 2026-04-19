@@ -76,7 +76,12 @@ export function createSyncSession(
     }
   }
 
-  // Create proxy servers (Task 2 — proxy bridging)
+  // Create proxy servers (Task 2 — proxy bridging).
+  // Safe to call before populating activeSessions / sessionIdToGroup:
+  // net.Server defers 'connection' events to the next tick, so the
+  // session registration below runs first in the current tick.
+  // Don't refactor createSyncSession to be async without moving this
+  // registration ahead of createProxy.
   const proxy = createProxy(sessionId, groupSocketPath, mainSocketPath);
 
   // Arm timeout
