@@ -95,6 +95,7 @@ export function startIpcWatcher(deps: IpcDeps): void {
       try {
         return (
           fs.statSync(path.join(ipcBaseDir, f)).isDirectory() &&
+          f !== 'errors' &&
           isValidGroupFolder(f)
         );
       } catch { return false; }
@@ -124,8 +125,14 @@ export function startIpcWatcher(deps: IpcDeps): void {
     let groupFolders: string[];
     try {
       groupFolders = fs.readdirSync(ipcBaseDir).filter((f) => {
-        const stat = fs.statSync(path.join(ipcBaseDir, f));
-        return stat.isDirectory() && f !== 'errors';
+        try {
+          const stat = fs.statSync(path.join(ipcBaseDir, f));
+          return (
+            stat.isDirectory() && f !== 'errors' && isValidGroupFolder(f)
+          );
+        } catch {
+          return false;
+        }
       });
     } catch (err) {
       logger.error({ err }, 'Error reading IPC base directory');

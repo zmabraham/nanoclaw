@@ -3,6 +3,7 @@ import fs from 'fs';
 import fsp from 'fs/promises';
 import path from 'path';
 
+import { isValidGroupFolder } from './group-folder.js';
 import {
   createSyncSession,
   getActiveSession,
@@ -126,7 +127,9 @@ export function runIntercomGarbageCollection(
     groupFolders = fs.readdirSync(ipcBaseDir).filter((f) => {
       try {
         return (
-          fs.statSync(path.join(ipcBaseDir, f)).isDirectory() && f !== 'errors'
+          fs.statSync(path.join(ipcBaseDir, f)).isDirectory() &&
+          f !== 'errors' &&
+          isValidGroupFolder(f)
         );
       } catch {
         return false;
@@ -222,7 +225,10 @@ export async function processIntercomOutboxes(
   try {
     const entries = await fsp.readdir(ipcBaseDir, { withFileTypes: true });
     groupFolders = entries
-      .filter((e) => e.isDirectory() && e.name !== 'errors')
+      .filter(
+        (e) =>
+          e.isDirectory() && e.name !== 'errors' && isValidGroupFolder(e.name),
+      )
       .map((e) => e.name);
   } catch {
     return;
