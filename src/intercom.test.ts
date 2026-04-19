@@ -232,3 +232,180 @@ describe('handleGroupQueryResponse', () => {
     expect(markProcessed).toHaveBeenCalledWith('response-uuid');
   });
 });
+
+// ---------------------------------------------------------------------------
+// verifyTrust rejection path — trust check applies to escalation, query,
+// directive_response (and, indirectly, to sync_session_request before it
+// branches). A failed verification must produce a 'trust_verification_failed'
+// rejection in the sender's inbox and NOT route to main.
+// ---------------------------------------------------------------------------
+
+describe('verifyTrust rejection path', () => {
+  for (const type of ['escalation', 'query', 'directive_response']) {
+    it(`rejects ${type} when verifyTrust returns invalid`, async () => {
+      writeOutbox(tmpDir, 'group-a', {
+        version: 1,
+        id: `msg-${type}`,
+        type,
+        source_message_id: 'src-1',
+        subject: 'x',
+        body: 'y',
+      });
+      await processIntercomOutboxes(
+        tmpDir,
+        makeDeps({
+          verifyTrust: async () => ({
+            valid: false,
+            tier: null,
+            reason: 'no trust',
+          }),
+        }),
+      );
+      const senderInbox = listInbox(tmpDir, 'group-a') as Array<{
+        type: string;
+        error: string;
+      }>;
+      expect(senderInbox).toHaveLength(1);
+      expect(senderInbox[0]).toMatchObject({
+        type: 'error',
+        error: 'trust_verification_failed',
+      });
+      expect(listInbox(tmpDir, 'main')).toHaveLength(0);
+    });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// sync_session_request gating — requires owner trust AND sync_sessions
+// permission on the source group.
+// ---------------------------------------------------------------------------
+
+describe('sync_session_request gating', () => {
+  it('rejects sync_session_request when trust tier is member (not owner)', async () => {
+    writeOutbox(tmpDir, 'group-a', {
+      version: 1,
+      id: 'sync-1',
+      type: 'sync_session_request',
+      source_message_id: 'src-1',
+      timeout_seconds: 30,
+    });
+    await processIntercomOutboxes(
+      tmpDir,
+      makeDeps({
+        verifyTrust: async () => ({
+          valid: true,
+          tier: 'member' as const,
+        }),
+      }),
+    );
+    const senderInbox = listInbox(tmpDir, 'group-a') as Array<{
+      type: string;
+      error: string;
+    }>;
+    expect(senderInbox).toHaveLength(1);
+    expect(senderInbox[0]).toMatchObject({
+      type: 'error',
+      error: 'owner_trust_required',
+    });
+  });
+
+  it('rejects sync_session_request when sync_sessions not allowed for group', async () => {
+    writeOutbox(tmpDir, 'group-a', {
+      version: 1,
+      id: 'sync-2',
+      type: 'sync_session_request',
+      source_message_id: 'src-1',
+    });
+    await processIntercomOutboxes(
+      tmpDir,
+      makeDeps({
+        isSyncSessionAllowed: (g: string) => g !== 'group-a',
+      }),
+    );
+    const senderInbox = listInbox(tmpDir, 'group-a') as Array<{
+      type: string;
+      error: string;
+    }>;
+    expect(senderInbox).toHaveLength(1);
+    expect(senderInbox[0]).toMatchObject({
+      type: 'error',
+      error: 'sync_sessions_not_allowed',
+    });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Dedup short-circuit — if the outer message id is already marked processed,
+// the file is deleted from the outbox without re-routing.
+// ---------------------------------------------------------------------------
+
+describe('dedup short-circuit', () => {
+  it('deletes the outbox file without routing when id is already processed', async () => {
+    writeOutbox(tmpDir, 'group-a', {
+      version: 1,
+      id: 'dup-1',
+      type: 'escalation',
+      source_message_id: 'src-1',
+      subject: 'x',
+      body: 'y',
+    });
+    await processIntercomOutboxes(
+      tmpDir,
+      makeDeps({
+        isProcessed: (id: string) => id === 'dup-1',
+      }),
+    );
+    const outboxDir = path.join(tmpDir, 'group-a', 'intercom', 'outbox');
+    // Outbox file removed
+    const leftover = fs.existsSync(outboxDir)
+      ? fs.readdirSync(outboxDir).filter((f) => f.endsWith('.json'))
+      : [];
+    expect(leftover).toHaveLength(0);
+    // Not routed to main, no rejection to sender
+    expect(listInbox(tmpDir, 'main')).toHaveLength(0);
+    expect(listInbox(tmpDir, 'group-a')).toHaveLength(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Symlink escape — assertWithinBase must refuse writes that resolve outside
+// the ipcBaseDir via a symlinked inbox.
+// ---------------------------------------------------------------------------
+
+describe('safeAtomicWriteJson symlink escape', () => {
+  it('blocks writes when inbox is replaced by a symlink to an outside dir', async () => {
+    const outsideDir = fs.mkdtempSync(path.join(os.tmpdir(), 'outside-'));
+    try {
+      // Pre-create the outbox, then replace inbox/ with a symlink to outside
+      fs.mkdirSync(path.join(tmpDir, 'group-a', 'intercom', 'outbox'), {
+        recursive: true,
+      });
+      fs.symlinkSync(
+        outsideDir,
+        path.join(tmpDir, 'group-a', 'intercom', 'inbox'),
+      );
+      // Write a message that will produce a rejection (invalid type →
+      // also writes to errorsDir inside the ipcBaseDir, which is fine).
+      // Missing source_message_id triggers writeRejection → would write
+      // into group-a/intercom/inbox — the symlinked escape path.
+      writeOutbox(tmpDir, 'group-a', {
+        version: 1,
+        id: 'esc-1',
+        type: 'escalation',
+        subject: 'x',
+        body: 'y',
+      });
+      // assertWithinBase throws synchronously — catch it so the test
+      // can observe that nothing was written. Real callers currently
+      // let this propagate; what matters is that the symlinked path
+      // never receives data.
+      await expect(processIntercomOutboxes(tmpDir, makeDeps())).rejects.toThrow(
+        /Path traversal blocked/,
+      );
+      const outsideFiles = fs.readdirSync(outsideDir);
+      expect(outsideFiles).toHaveLength(0);
+    } finally {
+      fs.rmSync(outsideDir, { recursive: true, force: true });
+    }
+  });
+});
