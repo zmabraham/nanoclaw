@@ -2,6 +2,7 @@ import fs from 'fs';
 import path from 'path';
 
 import { DATA_DIR } from '../config.js';
+import { assertWithinBase } from '../intercom-utils.js';
 import { CONFIG_PATH, IntercomWhitelist } from '../intercom-whitelist.js';
 import { IpcHandler, registerIpcHandler } from '../ipc-handlers.js';
 import { logger } from '../logger.js';
@@ -39,6 +40,19 @@ function writeIpcResponse(
   }
   const responsesDir = path.join(DATA_DIR, 'ipc', sourceGroup, 'responses');
   fs.mkdirSync(responsesDir, { recursive: true });
+  try {
+    // Defense in depth: reject symlinked response dirs that escape DATA_DIR/ipc/{group}
+    assertWithinBase(
+      responsesDir,
+      path.join(DATA_DIR, 'ipc', sourceGroup),
+    );
+  } catch (err) {
+    logger.warn(
+      { sourceGroup, err },
+      'Rejected whitelist_edit response: symlink escape blocked',
+    );
+    return;
+  }
   const responseFile = path.join(responsesDir, `${safeId}.json`);
   const tempFile = `${responseFile}.tmp`;
   fs.writeFileSync(tempFile, JSON.stringify(response));

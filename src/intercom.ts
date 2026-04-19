@@ -52,9 +52,7 @@ export interface IntercomMessage {
 
 export interface IntercomDeps {
   getWhitelist: () => { expired_retention_days: number };
-  verifyTrust: (
-    sourceMessageId: string,
-  ) => Promise<{
+  verifyTrust: (sourceMessageId: string) => Promise<{
     valid: boolean;
     tier: 'owner' | 'member' | null;
     reason?: string;

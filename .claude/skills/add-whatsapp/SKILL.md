@@ -240,8 +240,10 @@ npx tsx setup/index.ts --step register \
   --channel whatsapp \
   --assistant-name "<name>" \
   --is-main \
-  --no-trigger-required \  # Only for main/self-chat
-  --dedicated-number       # Only if user chose dedicated number
+  --no-trigger-required \
+  --dedicated-number
+# --no-trigger-required: only for main/self-chat
+# --dedicated-number:    only if user chose dedicated number
 ```
 
 For additional groups (trigger-required):

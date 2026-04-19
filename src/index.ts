@@ -577,7 +577,6 @@ async function main(): Promise<void> {
   logger.info('Database initialized');
   loadState();
 
-
   // Ensure OneCLI agents exist for all registered groups.
   // Recovers from missed creates (e.g. OneCLI was down at registration time).
   for (const [jid, group] of Object.entries(registeredGroups)) {
