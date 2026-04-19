@@ -23,7 +23,10 @@ function makeDeps(overrides: Partial<IntercomDeps> = {}): IntercomDeps {
 function writeOutbox(ipcDir: string, folder: string, msg: object): void {
   const dir = path.join(ipcDir, folder, 'intercom', 'outbox');
   fs.mkdirSync(dir, { recursive: true });
-  fs.writeFileSync(path.join(dir, `${Date.now()}-${Math.random().toString(36).slice(2)}.json`), JSON.stringify(msg));
+  fs.writeFileSync(
+    path.join(dir, `${Date.now()}-${Math.random().toString(36).slice(2)}.json`),
+    JSON.stringify(msg),
+  );
 }
 
 function listInbox(ipcDir: string, folder: string): object[] {
@@ -73,7 +76,10 @@ describe('missing source_message_id feedback', () => {
     await processIntercomOutboxes(tmpDir, makeDeps());
     const senderInbox = listInbox(tmpDir, 'group-a');
     expect(senderInbox).toHaveLength(1);
-    expect(senderInbox[0]).toMatchObject({ type: 'error', error: 'missing_source_message_id' });
+    expect(senderInbox[0]).toMatchObject({
+      type: 'error',
+      error: 'missing_source_message_id',
+    });
     // Also moved to errors/
     expect(listErrors(tmpDir, 'group-a')).toHaveLength(1);
     // Not routed to main
@@ -134,14 +140,24 @@ describe('handleGroupQueryResponse', () => {
   });
 
   it('moves to errors/ when in_response_to is missing', async () => {
-    writeOutbox(tmpDir, 'group-a', { version: 1, id: 'r1', type: 'query_response', status: 'completed' });
+    writeOutbox(tmpDir, 'group-a', {
+      version: 1,
+      id: 'r1',
+      type: 'query_response',
+      status: 'completed',
+    });
     await processIntercomOutboxes(tmpDir, makeDepsWithKnown());
     expect(listErrors(tmpDir, 'group-a')).toHaveLength(1);
     expect(listInbox(tmpDir, 'main')).toHaveLength(0);
   });
 
   it('moves to errors/ when status is missing', async () => {
-    writeOutbox(tmpDir, 'group-a', { version: 1, id: 'r2', type: 'query_response', in_response_to: knownQueryId });
+    writeOutbox(tmpDir, 'group-a', {
+      version: 1,
+      id: 'r2',
+      type: 'query_response',
+      in_response_to: knownQueryId,
+    });
     await processIntercomOutboxes(tmpDir, makeDepsWithKnown());
     expect(listErrors(tmpDir, 'group-a')).toHaveLength(1);
   });
@@ -153,11 +169,18 @@ describe('handleGroupQueryResponse', () => {
   });
 
   it('writes unknown_query_reference rejection to sender inbox when in_response_to is not processed', async () => {
-    writeOutbox(tmpDir, 'group-a', validResponse({ in_response_to: 'unrecognized-id' }));
+    writeOutbox(
+      tmpDir,
+      'group-a',
+      validResponse({ in_response_to: 'unrecognized-id' }),
+    );
     await processIntercomOutboxes(tmpDir, makeDepsWithKnown());
     const senderInbox = listInbox(tmpDir, 'group-a');
     expect(senderInbox).toHaveLength(1);
-    expect(senderInbox[0]).toMatchObject({ type: 'error', error: 'unknown_query_reference' });
+    expect(senderInbox[0]).toMatchObject({
+      type: 'error',
+      error: 'unknown_query_reference',
+    });
     expect(listInbox(tmpDir, 'main')).toHaveLength(0);
   });
 
@@ -166,15 +189,23 @@ describe('handleGroupQueryResponse', () => {
     await processIntercomOutboxes(tmpDir, makeDepsWithKnown());
     const senderInbox = listInbox(tmpDir, 'group-a');
     expect(senderInbox).toHaveLength(1);
-    expect(senderInbox[0]).toMatchObject({ type: 'error', error: 'self_routing_rejected' });
+    expect(senderInbox[0]).toMatchObject({
+      type: 'error',
+      error: 'self_routing_rejected',
+    });
     expect(listInbox(tmpDir, 'main')).toHaveLength(0);
   });
 
   it('skips target whitelist check when routing to main', async () => {
     const isWhitelisted = vi.fn(() => true);
     writeOutbox(tmpDir, 'group-a', validResponse()); // no to_group → defaults to 'main'
-    await processIntercomOutboxes(tmpDir, { ...makeDepsWithKnown(), isWhitelisted });
-    const mainCalls = (isWhitelisted.mock.calls as string[][]).filter((args) => args[0] === 'main');
+    await processIntercomOutboxes(tmpDir, {
+      ...makeDepsWithKnown(),
+      isWhitelisted,
+    });
+    const mainCalls = (isWhitelisted.mock.calls as string[][]).filter(
+      (args) => args[0] === 'main',
+    );
     expect(mainCalls).toHaveLength(0);
     expect(listInbox(tmpDir, 'main')).toHaveLength(1);
   });
@@ -187,7 +218,10 @@ describe('handleGroupQueryResponse', () => {
     await processIntercomOutboxes(tmpDir, deps);
     const senderInbox = listInbox(tmpDir, 'group-a');
     expect(senderInbox).toHaveLength(1);
-    expect(senderInbox[0]).toMatchObject({ type: 'error', error: 'target_not_whitelisted' });
+    expect(senderInbox[0]).toMatchObject({
+      type: 'error',
+      error: 'target_not_whitelisted',
+    });
     expect(listInbox(tmpDir, 'group-b')).toHaveLength(0);
   });
 

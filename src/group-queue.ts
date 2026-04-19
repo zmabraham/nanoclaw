@@ -2,14 +2,7 @@ import { ChildProcess } from 'child_process';
 import fs from 'fs';
 import path from 'path';
 
-import {
-  DATA_DIR,
-  MAX_CONCURRENT_CONTAINERS,
-  LATE_FINALIZE_MAX_RETRIES,
-  LATE_FINALIZE_BACKOFF_MS,
-  LATE_FINALIZE_EXHAUST_COOLDOWN_MS,
-  MAX_MESSAGES_PER_PROMPT,
-} from './config.js';
+import { DATA_DIR, MAX_CONCURRENT_CONTAINERS } from './config.js';
 import { logger } from './logger.js';
 
 interface QueuedTask {
@@ -27,7 +20,6 @@ interface GroupState {
   isTaskContainer: boolean;
   runningTaskId: string | null;
   pendingMessages: boolean;
-  pendingRows?: boolean;
   pendingTasks: QueuedTask[];
   process: ChildProcess | null;
   containerName: string | null;
@@ -41,11 +33,6 @@ export class GroupQueue {
   private waitingGroups: string[] = [];
   private processMessagesFn: ((groupJid: string) => Promise<boolean>) | null =
     null;
-  private processPendingRowsFn:
-    | ((chatJid: string, rowIds: string[]) => Promise<boolean>)
-    | null = null;
-  private groupFolderToChatJid = new Map<string, string>();
-  private pendingRowIdsByGroup = new Map<string, Set<string>>();
   private shuttingDown = false;
 
   private getGroup(groupJid: string): GroupState {
@@ -57,7 +44,6 @@ export class GroupQueue {
         isTaskContainer: false,
         runningTaskId: null,
         pendingMessages: false,
-        pendingRows: false,
         pendingTasks: [],
         process: null,
         containerName: null,
@@ -71,96 +57,6 @@ export class GroupQueue {
 
   setProcessMessagesFn(fn: (groupJid: string) => Promise<boolean>): void {
     this.processMessagesFn = fn;
-  }
-
-  setProcessPendingRowsFn(
-    fn: (chatJid: string, rowIds: string[]) => Promise<boolean>,
-  ): void {
-    this.processPendingRowsFn = fn;
-  }
-
-  registerGroupFolder(chatJid: string, groupFolder: string): void {
-    this.groupFolderToChatJid.set(groupFolder, chatJid);
-    // Flush any rows enqueued before this mapping existed (startup race).
-    const pending = this.pendingRowIdsByGroup.get(groupFolder);
-    if (pending && pending.size > 0) {
-      this.enqueuePendingRows(groupFolder, [...pending]);
-    }
-  }
-
-  enqueuePendingRows(groupFolder: string, rowIds: string[]): void {
-    if (this.shuttingDown || rowIds.length === 0) return;
-    const set = this.pendingRowIdsByGroup.get(groupFolder) ?? new Set<string>();
-    for (const id of rowIds) set.add(id);
-    this.pendingRowIdsByGroup.set(groupFolder, set);
-
-    const chatJid = this.groupFolderToChatJid.get(groupFolder);
-    if (!chatJid) {
-      logger.warn(
-        { groupFolder },
-        'enqueuePendingRows: no chatJid mapping yet; will flush on next registration',
-      );
-      return;
-    }
-
-    const state = this.getGroup(chatJid);
-    state.pendingRows = true;
-    if (state.active) return;
-    if (this.activeCount >= MAX_CONCURRENT_CONTAINERS) {
-      if (!this.waitingGroups.includes(chatJid)) {
-        this.waitingGroups.push(chatJid);
-      }
-      return;
-    }
-    this.runForGroup(chatJid, 'pendingRows').catch((err) =>
-      logger.error(
-        { groupFolder, chatJid, err },
-        'runForGroup failed for pendingRows',
-      ),
-    );
-  }
-
-  async drainPendingRows(
-    chatJid: string,
-    groupFolder: string,
-  ): Promise<boolean> {
-    if (!this.processPendingRowsFn) return true;
-    const set = this.pendingRowIdsByGroup.get(groupFolder);
-    if (!set || set.size === 0) return true;
-    const allRowIds = [...set];
-    this.pendingRowIdsByGroup.delete(groupFolder);
-
-    const chunk = allRowIds.slice(0, MAX_MESSAGES_PER_PROMPT);
-    const overflow = allRowIds.slice(MAX_MESSAGES_PER_PROMPT);
-    if (overflow.length > 0) {
-      this.enqueuePendingRows(groupFolder, overflow);
-    }
-
-    for (let attempt = 1; attempt <= LATE_FINALIZE_MAX_RETRIES; attempt++) {
-      const ok = await this.processPendingRowsFn(chatJid, chunk).catch(
-        () => false,
-      );
-      if (ok) return true;
-      if (attempt < LATE_FINALIZE_MAX_RETRIES) {
-        await new Promise((r) =>
-          setTimeout(r, LATE_FINALIZE_BACKOFF_MS * Math.pow(2, attempt - 1)),
-        );
-      }
-    }
-    logger.warn(
-      {
-        chatJid,
-        groupFolder,
-        count: chunk.length,
-        cooldownMs: LATE_FINALIZE_EXHAUST_COOLDOWN_MS,
-      },
-      'drainPendingRows: retries exhausted — re-enqueuing after cooldown',
-    );
-    setTimeout(
-      () => this.enqueuePendingRows(groupFolder, chunk),
-      LATE_FINALIZE_EXHAUST_COOLDOWN_MS,
-    ).unref();
-    return false;
   }
 
   enqueueMessageCheck(groupJid: string): void {
@@ -319,15 +215,13 @@ export class GroupQueue {
 
   private async runForGroup(
     groupJid: string,
-    reason: 'messages' | 'drain' | 'pendingRows',
+    reason: 'messages' | 'drain',
   ): Promise<void> {
     const state = this.getGroup(groupJid);
     state.active = true;
     state.idleWaiting = false;
     state.isTaskContainer = false;
-    if (reason !== 'pendingRows') {
-      state.pendingMessages = false;
-    }
+    state.pendingMessages = false;
     this.activeCount++;
 
     logger.debug(
@@ -337,20 +231,7 @@ export class GroupQueue {
 
     try {
       let resultOk: boolean;
-      if (reason === 'pendingRows') {
-        const groupFolder = [...this.groupFolderToChatJid.entries()].find(
-          ([, jid]) => jid === groupJid,
-        )?.[0];
-        if (!groupFolder) {
-          logger.error(
-            { chatJid: groupJid },
-            'runForGroup(pendingRows): no groupFolder mapping',
-          );
-          resultOk = false;
-        } else {
-          resultOk = await this.drainPendingRows(groupJid, groupFolder);
-        }
-      } else if (this.processMessagesFn) {
+      if (this.processMessagesFn) {
         resultOk = await this.processMessagesFn(groupJid);
       } else {
         resultOk = true;
@@ -444,26 +325,10 @@ export class GroupQueue {
 
     // Then pending messages (text path)
     if (state.pendingMessages) {
-      // If pendingRows is ALSO set, requeue so it fires on the next slot-free.
-      if (state.pendingRows) {
-        this.waitingGroups.push(groupJid);
-      }
       this.runForGroup(groupJid, 'drain').catch((err) =>
         logger.error(
           { groupJid, err },
           'Unhandled error in runForGroup (drain)',
-        ),
-      );
-      return;
-    }
-
-    // Then pending rows (media-finalize path)
-    if (state.pendingRows) {
-      state.pendingRows = false;
-      this.runForGroup(groupJid, 'pendingRows').catch((err) =>
-        logger.error(
-          { groupJid, err },
-          'runForGroup failed for pendingRows drain',
         ),
       );
       return;
@@ -494,27 +359,14 @@ export class GroupQueue {
         // Guard against same-JID duplicate dispatch
         if (state.active) continue;
         state.pendingMessages = false;
-        // If pendingRows is ALSO set, re-queue so it fires on next slot-free
-        if (state.pendingRows) {
-          this.waitingGroups.push(nextJid);
-        }
         this.runForGroup(nextJid, 'drain').catch((err) =>
           logger.error(
             { groupJid: nextJid, err },
             'Unhandled error in runForGroup (waiting)',
           ),
         );
-      } else if (state.pendingRows) {
-        if (state.active) continue;
-        state.pendingRows = false;
-        this.runForGroup(nextJid, 'pendingRows').catch((err) =>
-          logger.error(
-            { groupJid: nextJid, err },
-            'runForGroup failed for pendingRows (waiting)',
-          ),
-        );
       }
-      // If neither pending, skip this group
+      // If nothing pending, skip this group
     }
   }
 

@@ -4,10 +4,7 @@ import fsp from 'fs/promises';
 import path from 'path';
 
 import { isValidGroupFolder } from './group-folder.js';
-import {
-  createSyncSession,
-  getActiveSession,
-} from './intercom-sync.js';
+import { createSyncSession, getActiveSession } from './intercom-sync.js';
 import {
   atomicWriteJson,
   inboxFilename,
@@ -45,7 +42,7 @@ export interface IntercomMessage {
   timeout_seconds?: number;
   expires_at?: string;
   in_response_to?: string;
-  status?: string;   // 'completed' | 'error' for query_response; 'approved' | 'rejected' for approval_result
+  status?: string; // 'completed' | 'error' for query_response; 'approved' | 'rejected' for approval_result
   result?: string;
   reason?: string;
   private?: boolean;
@@ -57,7 +54,11 @@ export interface IntercomDeps {
   getWhitelist: () => { expired_retention_days: number };
   verifyTrust: (
     sourceMessageId: string,
-  ) => Promise<{ valid: boolean; tier: 'owner' | 'member' | null; reason?: string }>;
+  ) => Promise<{
+    valid: boolean;
+    tier: 'owner' | 'member' | null;
+    reason?: string;
+  }>;
   isProcessed: (messageId: string) => boolean;
   markProcessed: (messageId: string) => void;
   isWhitelisted: (groupFolder: string) => boolean;
@@ -90,7 +91,11 @@ function writeRejection(
     message,
   };
   fs.mkdirSync(inboxDir, { recursive: true });
-  safeAtomicWriteJson(path.join(inboxDir, inboxFilename()), payload, _ipcBaseDir);
+  safeAtomicWriteJson(
+    path.join(inboxDir, inboxFilename()),
+    payload,
+    _ipcBaseDir,
+  );
 }
 
 /** Move a file to a target directory, creating the directory if needed. */
@@ -149,7 +154,9 @@ export function runIntercomGarbageCollection(
 
     try {
       if (fs.existsSync(inboxDir)) {
-        const files = fs.readdirSync(inboxDir).filter((f) => f.endsWith('.json'));
+        const files = fs
+          .readdirSync(inboxDir)
+          .filter((f) => f.endsWith('.json'));
         for (const file of files) {
           const filePath = path.join(inboxDir, file);
           try {
@@ -182,7 +189,9 @@ export function runIntercomGarbageCollection(
     // --- Hard-delete old expired files based on file mtime ---
     try {
       if (fs.existsSync(expiredDir)) {
-        const files = fs.readdirSync(expiredDir).filter((f) => f.endsWith('.json'));
+        const files = fs
+          .readdirSync(expiredDir)
+          .filter((f) => f.endsWith('.json'));
         for (const file of files) {
           const filePath = path.join(expiredDir, file);
           try {
@@ -256,7 +265,10 @@ export async function processIntercomOutboxes(
       try {
         msg = JSON.parse(await fsp.readFile(filePath, 'utf-8'));
       } catch (err) {
-        logger.warn({ folder, file, err }, 'Malformed intercom message — moving to errors/');
+        logger.warn(
+          { folder, file, err },
+          'Malformed intercom message — moving to errors/',
+        );
         moveToDir(filePath, errorsDir);
         continue;
       }
@@ -269,20 +281,26 @@ export async function processIntercomOutboxes(
         );
         const errorMsg = `Unrecognized version ${msg.version}. Expected ${CURRENT_VERSION}.`;
         // Write error detail to errors/ for debugging
-        atomicWriteJson(
-          path.join(errorsDir, `error-${path.basename(file)}`),
-          {
-            version: CURRENT_VERSION,
-            id: crypto.randomUUID(),
-            type: 'error',
-            in_response_to: msg.id,
-            error: 'unsupported_version',
-            message: errorMsg,
-          },
-        );
+        atomicWriteJson(path.join(errorsDir, `error-${path.basename(file)}`), {
+          version: CURRENT_VERSION,
+          id: crypto.randomUUID(),
+          type: 'error',
+          in_response_to: msg.id,
+          error: 'unsupported_version',
+          message: errorMsg,
+        });
         // Also notify the container via inbox so it gets feedback
-        writeRejection(inboxDir, msg.id || 'unknown', 'unsupported_version', errorMsg);
-        try { fs.unlinkSync(filePath); } catch { /* already gone */ }
+        writeRejection(
+          inboxDir,
+          msg.id || 'unknown',
+          'unsupported_version',
+          errorMsg,
+        );
+        try {
+          fs.unlinkSync(filePath);
+        } catch {
+          /* already gone */
+        }
         continue;
       }
 
@@ -303,15 +321,25 @@ export async function processIntercomOutboxes(
 
       // 5. Require message ID (prevents dedup bypass)
       if (!msg.id) {
-        logger.warn({ folder, file }, 'Intercom message missing id — moving to errors/');
+        logger.warn(
+          { folder, file },
+          'Intercom message missing id — moving to errors/',
+        );
         moveToDir(filePath, errorsDir);
         continue;
       }
 
       // 6. Check dedup
       if (deps.isProcessed(msg.id)) {
-        logger.debug({ folder, file, id: msg.id }, 'Duplicate intercom message — skipping');
-        try { fs.unlinkSync(filePath); } catch { /* already gone */ }
+        logger.debug(
+          { folder, file, id: msg.id },
+          'Duplicate intercom message — skipping',
+        );
+        try {
+          fs.unlinkSync(filePath);
+        } catch {
+          /* already gone */
+        }
         continue;
       }
 
@@ -319,7 +347,14 @@ export async function processIntercomOutboxes(
       if (isMain) {
         await processMainOutbox(ipcBaseDir, msg, filePath, deps);
       } else {
-        await processGroupOutbox(ipcBaseDir, folder, msg, filePath, inboxDir, deps);
+        await processGroupOutbox(
+          ipcBaseDir,
+          folder,
+          msg,
+          filePath,
+          inboxDir,
+          deps,
+        );
       }
     }
   }
@@ -341,20 +376,34 @@ async function processGroupOutbox(
 
   // 5. Check whitelist
   if (!deps.isWhitelisted(folder)) {
-    logger.warn({ folder, id: msg.id }, 'Intercom message from non-whitelisted group');
+    logger.warn(
+      { folder, id: msg.id },
+      'Intercom message from non-whitelisted group',
+    );
     writeRejection(
       inboxDir,
       msg.id,
       'group_not_whitelisted',
       `Group ${folder} is not on the intercom whitelist`,
     );
-    try { fs.unlinkSync(filePath); } catch { /* already gone */ }
+    try {
+      fs.unlinkSync(filePath);
+    } catch {
+      /* already gone */
+    }
     return;
   }
 
   // query_response uses a different trust model (in_response_to instead of source_message_id)
   if (msg.type === 'query_response') {
-    await handleGroupQueryResponse(ipcBaseDir, folder, msg, filePath, inboxDir, deps);
+    await handleGroupQueryResponse(
+      ipcBaseDir,
+      folder,
+      msg,
+      filePath,
+      inboxDir,
+      deps,
+    );
     return;
   }
 
@@ -369,7 +418,7 @@ async function processGroupOutbox(
       msg.id,
       'missing_source_message_id',
       'The source_message_id field is required. Set it to the id attribute of the <message> tag ' +
-      'from the user message that triggered this request.',
+        'from the user message that triggered this request.',
     );
     moveToDir(filePath, errorsDir);
     return;
@@ -387,24 +436,44 @@ async function processGroupOutbox(
       'trust_verification_failed',
       trustResult.reason || 'Trust verification failed',
     );
-    try { fs.unlinkSync(filePath); } catch { /* already gone */ }
+    try {
+      fs.unlinkSync(filePath);
+    } catch {
+      /* already gone */
+    }
     return;
   }
 
   // 7. Handle sync_session_request specially
   if (msg.type === 'sync_session_request') {
-    await handleSyncSessionRequest(ipcBaseDir, folder, msg, filePath, inboxDir, deps, trustResult);
+    await handleSyncSessionRequest(
+      ipcBaseDir,
+      folder,
+      msg,
+      filePath,
+      inboxDir,
+      deps,
+      trustResult,
+    );
     return;
   }
 
   // 8. Route to main's inbox
   const mainInboxDir = path.join(ipcBaseDir, 'main', 'intercom', 'inbox');
   fs.mkdirSync(mainInboxDir, { recursive: true });
-  safeAtomicWriteJson(path.join(mainInboxDir, inboxFilename()), msg, ipcBaseDir);
+  safeAtomicWriteJson(
+    path.join(mainInboxDir, inboxFilename()),
+    msg,
+    ipcBaseDir,
+  );
 
   // 9. Mark processed, delete original
   if (msg.id) deps.markProcessed(msg.id);
-  try { fs.unlinkSync(filePath); } catch { /* already gone */ }
+  try {
+    fs.unlinkSync(filePath);
+  } catch {
+    /* already gone */
+  }
 
   logger.info(
     { folder, id: msg.id, type: msg.type },
@@ -437,23 +506,28 @@ async function handleSyncSessionRequest(
       'owner_trust_required',
       'Sync sessions require owner trust. The source message must be from the owner.',
     );
-    try { fs.unlinkSync(filePath); } catch { /* already gone */ }
+    try {
+      fs.unlinkSync(filePath);
+    } catch {
+      /* already gone */
+    }
     return;
   }
 
   // 2. Check sync_sessions whitelist permission
   if (deps.isSyncSessionAllowed && !deps.isSyncSessionAllowed(folder)) {
-    logger.warn(
-      { folder, id: msg.id },
-      'Group not allowed for sync sessions',
-    );
+    logger.warn({ folder, id: msg.id }, 'Group not allowed for sync sessions');
     writeRejection(
       inboxDir,
       msg.id,
       'sync_sessions_not_allowed',
       `Group ${folder} does not have sync_sessions enabled in the whitelist`,
     );
-    try { fs.unlinkSync(filePath); } catch { /* already gone */ }
+    try {
+      fs.unlinkSync(filePath);
+    } catch {
+      /* already gone */
+    }
     return;
   }
 
@@ -469,7 +543,11 @@ async function handleSyncSessionRequest(
       'session_already_active',
       `A sync session is already active for group ${folder}. Only one session per group is allowed.`,
     );
-    try { fs.unlinkSync(filePath); } catch { /* already gone */ }
+    try {
+      fs.unlinkSync(filePath);
+    } catch {
+      /* already gone */
+    }
     return;
   }
 
@@ -493,7 +571,11 @@ async function handleSyncSessionRequest(
 
   // Mark processed, delete original
   if (msg.id) deps.markProcessed(msg.id);
-  try { fs.unlinkSync(filePath); } catch { /* already gone */ }
+  try {
+    fs.unlinkSync(filePath);
+  } catch {
+    /* already gone */
+  }
 
   logger.info(
     { folder, id: msg.id, sessionId: session.id },
@@ -517,7 +599,10 @@ async function handleGroupQueryResponse(
 
   // 1. Require in_response_to — malformed; move to errors/ (no feedback path, can't reply)
   if (!msg.in_response_to) {
-    logger.warn({ folder, id: msg.id }, 'query_response missing in_response_to — moving to errors/');
+    logger.warn(
+      { folder, id: msg.id },
+      'query_response missing in_response_to — moving to errors/',
+    );
     moveToDir(filePath, errorsDir);
     return;
   }
@@ -545,47 +630,73 @@ async function handleGroupQueryResponse(
       msg.id,
       'unknown_query_reference',
       `The referenced query ID ${msg.in_response_to} was not found in the host's processed-messages ` +
-      `table. It may have never existed or expired (retention: ${deps.getWhitelist().expired_retention_days} days).`,
+        `table. It may have never existed or expired (retention: ${deps.getWhitelist().expired_retention_days} days).`,
     );
-    try { fs.unlinkSync(filePath); } catch { /* already gone */ }
+    try {
+      fs.unlinkSync(filePath);
+    } catch {
+      /* already gone */
+    }
     return;
   }
 
   // 4. Resolve target; reject self-routing (would cause an inbox re-invocation loop)
   const target = msg.to_group ?? 'main';
   if (target === folder) {
-    logger.warn({ folder, id: msg.id }, 'query_response targets sender own inbox — rejecting');
+    logger.warn(
+      { folder, id: msg.id },
+      'query_response targets sender own inbox — rejecting',
+    );
     writeRejection(
       inboxDir,
       msg.id,
       'self_routing_rejected',
       'The to_group field must not equal the sending group folder.',
     );
-    try { fs.unlinkSync(filePath); } catch { /* already gone */ }
+    try {
+      fs.unlinkSync(filePath);
+    } catch {
+      /* already gone */
+    }
     return;
   }
 
   // 5. Validate target whitelist — skip for 'main' (always a valid target)
   if (target !== 'main' && !deps.isWhitelisted(target)) {
-    logger.warn({ folder, id: msg.id, target }, 'query_response target not whitelisted — rejecting');
+    logger.warn(
+      { folder, id: msg.id, target },
+      'query_response target not whitelisted — rejecting',
+    );
     writeRejection(
       inboxDir,
       msg.id,
       'target_not_whitelisted',
       `Target group ${target} is not on the intercom whitelist`,
     );
-    try { fs.unlinkSync(filePath); } catch { /* already gone */ }
+    try {
+      fs.unlinkSync(filePath);
+    } catch {
+      /* already gone */
+    }
     return;
   }
 
   // 6. Route to target inbox
   const targetInboxDir = path.join(ipcBaseDir, target, 'intercom', 'inbox');
   fs.mkdirSync(targetInboxDir, { recursive: true });
-  safeAtomicWriteJson(path.join(targetInboxDir, inboxFilename()), msg, ipcBaseDir);
+  safeAtomicWriteJson(
+    path.join(targetInboxDir, inboxFilename()),
+    msg,
+    ipcBaseDir,
+  );
 
   // 7. Mark processed, delete original
   if (msg.id) deps.markProcessed(msg.id);
-  try { fs.unlinkSync(filePath); } catch { /* already gone */ }
+  try {
+    fs.unlinkSync(filePath);
+  } catch {
+    /* already gone */
+  }
 
   logger.info(
     { folder, id: msg.id, target, in_response_to: msg.in_response_to },
@@ -618,7 +729,11 @@ async function processMainOutbox(
         'target_not_whitelisted',
         `Target group ${msg.to_group} is not on the intercom whitelist`,
       );
-      try { fs.unlinkSync(filePath); } catch { /* already gone */ }
+      try {
+        fs.unlinkSync(filePath);
+      } catch {
+        /* already gone */
+      }
       return;
     }
 
@@ -629,10 +744,18 @@ async function processMainOutbox(
       'inbox',
     );
     fs.mkdirSync(targetInboxDir, { recursive: true });
-    safeAtomicWriteJson(path.join(targetInboxDir, inboxFilename()), msg, ipcBaseDir);
+    safeAtomicWriteJson(
+      path.join(targetInboxDir, inboxFilename()),
+      msg,
+      ipcBaseDir,
+    );
 
     if (msg.id) deps.markProcessed(msg.id);
-    try { fs.unlinkSync(filePath); } catch { /* already gone */ }
+    try {
+      fs.unlinkSync(filePath);
+    } catch {
+      /* already gone */
+    }
 
     logger.info(
       { to_group: msg.to_group, id: msg.id, type: msg.type },
@@ -647,10 +770,7 @@ async function processMainOutbox(
         { id: msg.id },
         'Main response missing from_group (target) — moving to errors/',
       );
-      moveToDir(
-        filePath,
-        path.join(ipcBaseDir, 'main', 'intercom', 'errors'),
-      );
+      moveToDir(filePath, path.join(ipcBaseDir, 'main', 'intercom', 'errors'));
       return;
     }
 
@@ -661,10 +781,18 @@ async function processMainOutbox(
       'inbox',
     );
     fs.mkdirSync(targetInboxDir, { recursive: true });
-    safeAtomicWriteJson(path.join(targetInboxDir, inboxFilename()), msg, ipcBaseDir);
+    safeAtomicWriteJson(
+      path.join(targetInboxDir, inboxFilename()),
+      msg,
+      ipcBaseDir,
+    );
 
     if (msg.id) deps.markProcessed(msg.id);
-    try { fs.unlinkSync(filePath); } catch { /* already gone */ }
+    try {
+      fs.unlinkSync(filePath);
+    } catch {
+      /* already gone */
+    }
 
     logger.info(
       { targetGroup, id: msg.id, type: msg.type },
@@ -708,7 +836,9 @@ export function getIntercomPendingCount(groupInboxDir: string): number {
     for (const f of fs.readdirSync(groupInboxDir)) {
       if (!f.endsWith('.json')) continue;
       try {
-        const data = JSON.parse(fs.readFileSync(path.join(groupInboxDir, f), 'utf-8'));
+        const data = JSON.parse(
+          fs.readFileSync(path.join(groupInboxDir, f), 'utf-8'),
+        );
         if (data.expires_at) {
           const exp = new Date(data.expires_at).getTime();
           if (!isNaN(exp) && exp < now) continue;
@@ -757,8 +887,7 @@ export function checkAndTriggerInboxInvocations(
     groupFolders = fs.readdirSync(ipcBaseDir).filter((f) => {
       try {
         return (
-          fs.statSync(path.join(ipcBaseDir, f)).isDirectory() &&
-          f !== 'errors'
+          fs.statSync(path.join(ipcBaseDir, f)).isDirectory() && f !== 'errors'
         );
       } catch {
         return false;

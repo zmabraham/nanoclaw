@@ -159,7 +159,6 @@ function registerGroup(jid: string, group: RegisteredGroup): void {
 
   registeredGroups[jid] = group;
   setRegisteredGroup(jid, group);
-  queue.registerGroupFolder(jid, group.folder);
 
   // Create group folder
   fs.mkdirSync(path.join(groupDir, 'logs'), { recursive: true });
@@ -222,7 +221,7 @@ export function _setRegisteredGroups(
  * Process all pending messages for a group.
  * Called by the GroupQueue when it's this group's turn.
  */
-async function processGroupMessages(chatJid: string, rowIds?: string[]): Promise<boolean> {
+async function processGroupMessages(chatJid: string): Promise<boolean> {
   const group = registeredGroups[chatJid];
   if (!group) return true;
 
@@ -578,10 +577,6 @@ async function main(): Promise<void> {
   logger.info('Database initialized');
   loadState();
 
-  // Seed queue's reverse folder→JID map after restart so intercom dispatch works.
-  for (const [jid, group] of Object.entries(registeredGroups)) {
-    queue.registerGroupFolder(jid, group.folder);
-  }
 
   // Ensure OneCLI agents exist for all registered groups.
   // Recovers from missed creates (e.g. OneCLI was down at registration time).
@@ -786,10 +781,13 @@ async function main(): Promise<void> {
         await runAgent(group, intercomPrompt, chatJid, async (result) => {
           // Relay intercom results to the chat
           if (result.result) {
-            const raw = typeof result.result === 'string'
-              ? result.result
-              : JSON.stringify(result.result);
-            const text = raw.replace(/<internal>[\s\S]*?<\/internal>/g, '').trim();
+            const raw =
+              typeof result.result === 'string'
+                ? result.result
+                : JSON.stringify(result.result);
+            const text = raw
+              .replace(/<internal>[\s\S]*?<\/internal>/g, '')
+              .trim();
             if (text && channel) {
               await channel.sendMessage(chatJid, text);
             }
@@ -813,9 +811,6 @@ async function main(): Promise<void> {
   });
   startSessionCleanup();
   queue.setProcessMessagesFn(processGroupMessages);
-  queue.setProcessPendingRowsFn((chatJid, rowIds) =>
-    processGroupMessages(chatJid, rowIds),
-  );
   recoverPendingMessages();
   startMessageLoop().catch((err) => {
     logger.fatal({ err }, 'Message loop crashed unexpectedly');

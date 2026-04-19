@@ -16,7 +16,10 @@ export function inboxFilename(): string {
 export function assertWithinBase(targetPath: string, baseDir: string): void {
   const resolvedTarget = fs.realpathSync(targetPath);
   const resolvedBase = fs.realpathSync(baseDir);
-  if (!resolvedTarget.startsWith(resolvedBase + path.sep) && resolvedTarget !== resolvedBase) {
+  if (
+    !resolvedTarget.startsWith(resolvedBase + path.sep) &&
+    resolvedTarget !== resolvedBase
+  ) {
     throw new Error(
       `Path traversal blocked: ${targetPath} resolves to ${resolvedTarget}, outside ${resolvedBase}`,
     );

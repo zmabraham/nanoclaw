@@ -2,10 +2,7 @@ import fs from 'fs';
 import path from 'path';
 
 import { DATA_DIR } from '../config.js';
-import {
-  CONFIG_PATH,
-  IntercomWhitelist,
-} from '../intercom-whitelist.js';
+import { CONFIG_PATH, IntercomWhitelist } from '../intercom-whitelist.js';
 import { IpcHandler, registerIpcHandler } from '../ipc-handlers.js';
 import { logger } from '../logger.js';
 
@@ -34,7 +31,10 @@ function writeIpcResponse(
   // Sanitize requestId to prevent path traversal (mirrors writeIpcErrorResponse)
   const safeId = path.basename(requestId);
   if (!safeId || safeId !== requestId) {
-    logger.warn({ requestId }, 'Rejected unsafe requestId in whitelist_edit response');
+    logger.warn(
+      { requestId },
+      'Rejected unsafe requestId in whitelist_edit response',
+    );
     return;
   }
   const responsesDir = path.join(DATA_DIR, 'ipc', sourceGroup, 'responses');
@@ -53,11 +53,12 @@ function readWhitelistFromDisk(): IntercomWhitelist {
   try {
     const raw = fs.readFileSync(CONFIG_PATH, 'utf-8');
     const parsed = JSON.parse(raw) as Partial<IntercomWhitelist>;
-    const rawGroups = parsed.groups && typeof parsed.groups === 'object' ? parsed.groups : {};
+    const rawGroups =
+      parsed.groups && typeof parsed.groups === 'object' ? parsed.groups : {};
     // Normalize each group entry so handlers can safely access fields
     const groups: IntercomWhitelist['groups'] = {};
     for (const [name, entry] of Object.entries(rawGroups)) {
-      const e = entry && typeof entry === 'object' ? entry : {} as any;
+      const e = entry && typeof entry === 'object' ? entry : ({} as any);
       groups[name] = {
         intercom: e.intercom === true,
         sync_sessions: e.sync_sessions === true,
@@ -135,7 +136,10 @@ const handler: IpcHandler = async (data, _deps, context) => {
     switch (action as WhitelistAction) {
       case 'add_auto_approved': {
         if (!group || !subject) {
-          respond({ status: 'error', error: 'add_auto_approved requires group and subject' });
+          respond({
+            status: 'error',
+            error: 'add_auto_approved requires group and subject',
+          });
           return;
         }
         // Cannot add to auto_approved if subject is in always_ask
@@ -147,7 +151,10 @@ const handler: IpcHandler = async (data, _deps, context) => {
           return;
         }
         if (!whitelist.groups[group]) {
-          respond({ status: 'error', error: `Group "${group}" not found in whitelist` });
+          respond({
+            status: 'error',
+            error: `Group "${group}" not found in whitelist`,
+          });
           return;
         }
         if (!whitelist.groups[group].auto_approved.includes(subject)) {
@@ -158,21 +165,31 @@ const handler: IpcHandler = async (data, _deps, context) => {
 
       case 'remove_auto_approved': {
         if (!group || !subject) {
-          respond({ status: 'error', error: 'remove_auto_approved requires group and subject' });
+          respond({
+            status: 'error',
+            error: 'remove_auto_approved requires group and subject',
+          });
           return;
         }
         if (!whitelist.groups[group]) {
-          respond({ status: 'error', error: `Group "${group}" not found in whitelist` });
+          respond({
+            status: 'error',
+            error: `Group "${group}" not found in whitelist`,
+          });
           return;
         }
-        whitelist.groups[group].auto_approved =
-          whitelist.groups[group].auto_approved.filter((s) => s !== subject);
+        whitelist.groups[group].auto_approved = whitelist.groups[
+          group
+        ].auto_approved.filter((s) => s !== subject);
         break;
       }
 
       case 'add_always_ask': {
         if (!subject) {
-          respond({ status: 'error', error: 'add_always_ask requires subject' });
+          respond({
+            status: 'error',
+            error: 'add_always_ask requires subject',
+          });
           return;
         }
         if (!whitelist.always_ask.includes(subject)) {
@@ -183,14 +200,19 @@ const handler: IpcHandler = async (data, _deps, context) => {
 
       case 'remove_always_ask': {
         if (!subject) {
-          respond({ status: 'error', error: 'remove_always_ask requires subject' });
+          respond({
+            status: 'error',
+            error: 'remove_always_ask requires subject',
+          });
           return;
         }
         logger.info(
           { subject },
           'Removing subject from always_ask — this is a sensitive operation',
         );
-        whitelist.always_ask = whitelist.always_ask.filter((s) => s !== subject);
+        whitelist.always_ask = whitelist.always_ask.filter(
+          (s) => s !== subject,
+        );
         break;
       }
 
@@ -200,7 +222,10 @@ const handler: IpcHandler = async (data, _deps, context) => {
           return;
         }
         if (whitelist.groups[group]) {
-          respond({ status: 'error', error: `Group "${group}" already exists in whitelist` });
+          respond({
+            status: 'error',
+            error: `Group "${group}" already exists in whitelist`,
+          });
           return;
         }
         // New groups start with empty auto_approved (Requirement 4.1)
@@ -218,7 +243,10 @@ const handler: IpcHandler = async (data, _deps, context) => {
           return;
         }
         if (!whitelist.groups[group]) {
-          respond({ status: 'error', error: `Group "${group}" not found in whitelist` });
+          respond({
+            status: 'error',
+            error: `Group "${group}" not found in whitelist`,
+          });
           return;
         }
         if (settings) {
@@ -235,17 +263,11 @@ const handler: IpcHandler = async (data, _deps, context) => {
 
     writeWhitelistToDisk(whitelist);
 
-    logger.info(
-      { action, group, subject },
-      'Whitelist edit applied',
-    );
+    logger.info({ action, group, subject }, 'Whitelist edit applied');
     respond({ status: 'ok', action, group, subject });
   } catch (err) {
     const errorMessage = err instanceof Error ? err.message : String(err);
-    logger.error(
-      { err, action, group, subject },
-      'Whitelist edit failed',
-    );
+    logger.error({ err, action, group, subject }, 'Whitelist edit failed');
     respond({ status: 'error', error: errorMessage });
   }
 };

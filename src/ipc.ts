@@ -51,7 +51,10 @@ export interface IpcDeps {
   /** Check if a container is currently running for a given group folder. */
   isContainerRunningByFolder?: (groupFolder: string) => boolean;
   /** Enqueue an intercom-triggered invocation for a group. */
-  enqueueIntercomInvocation?: (groupFolder: string, pendingCount: number) => void;
+  enqueueIntercomInvocation?: (
+    groupFolder: string,
+    pendingCount: number,
+  ) => void;
   /** Notify an idle-waiting container about pending intercom messages. Returns true if piped. */
   notifyIdleContainer?: (groupFolder: string, pendingCount: number) => boolean;
 }
@@ -69,7 +72,10 @@ export function ensureIntercomDirs(
   groupFolder: string,
 ): void {
   if (!isValidGroupFolder(groupFolder)) {
-    logger.warn({ groupFolder }, 'Rejected invalid group folder in ensureIntercomDirs');
+    logger.warn(
+      { groupFolder },
+      'Rejected invalid group folder in ensureIntercomDirs',
+    );
     return;
   }
   for (const sub of ['outbox', 'inbox', 'expired', 'errors']) {
@@ -98,7 +104,9 @@ export function startIpcWatcher(deps: IpcDeps): void {
           f !== 'errors' &&
           isValidGroupFolder(f)
         );
-      } catch { return false; }
+      } catch {
+        return false;
+      }
     });
     for (const folder of existingFolders) {
       ensureIntercomDirs(ipcBaseDir, folder);
@@ -127,9 +135,7 @@ export function startIpcWatcher(deps: IpcDeps): void {
       groupFolders = fs.readdirSync(ipcBaseDir).filter((f) => {
         try {
           const stat = fs.statSync(path.join(ipcBaseDir, f));
-          return (
-            stat.isDirectory() && f !== 'errors' && isValidGroupFolder(f)
-          );
+          return stat.isDirectory() && f !== 'errors' && isValidGroupFolder(f);
         } catch {
           return false;
         }

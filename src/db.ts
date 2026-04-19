@@ -446,9 +446,7 @@ export function getMessageTrustTier(
   messageId: string,
 ): 'owner' | 'member' | null {
   const row = db
-    .prepare(
-      `SELECT trust_tier FROM messages WHERE id = ?`,
-    )
+    .prepare(`SELECT trust_tier FROM messages WHERE id = ?`)
     .get(messageId) as { trust_tier: string } | undefined;
   if (!row) return null;
   return row.trust_tier as 'owner' | 'member';
@@ -471,14 +469,19 @@ export function markIntercomProcessed(messageId: string): void {
 
 /** Delete intercom_processed entries older than retentionDays. */
 export function pruneIntercomProcessed(retentionDays: number): void {
-  const cutoff = new Date(Date.now() - retentionDays * 24 * 60 * 60 * 1000).toISOString();
-  const result = db.prepare(
-    'DELETE FROM intercom_processed WHERE processed_at < ?',
-  ).run(cutoff);
+  const cutoff = new Date(
+    Date.now() - retentionDays * 24 * 60 * 60 * 1000,
+  ).toISOString();
+  const result = db
+    .prepare('DELETE FROM intercom_processed WHERE processed_at < ?')
+    .run(cutoff);
   if (result.changes > 0) {
     // Lazy import to avoid circular dep at module level
     import('./logger.js').then(({ logger }) =>
-      logger.debug({ pruned: result.changes }, 'Pruned old intercom_processed entries'),
+      logger.debug(
+        { pruned: result.changes },
+        'Pruned old intercom_processed entries',
+      ),
     );
   }
 }

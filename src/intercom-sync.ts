@@ -62,10 +62,7 @@ export function createSyncSession(
     groupSocketDir,
     `session-${sessionId}.sock`,
   );
-  const mainSocketPath = path.join(
-    mainSocketDir,
-    `session-${sessionId}.sock`,
-  );
+  const mainSocketPath = path.join(mainSocketDir, `session-${sessionId}.sock`);
 
   // Clean up any leftover sockets at these paths
   for (const p of [groupSocketPath, mainSocketPath]) {
@@ -126,7 +123,10 @@ export function terminateSession(sessionId: string, reason: string): void {
 
   const session = activeSessions.get(groupFolder);
   if (!session || session.id !== sessionId) {
-    logger.debug({ sessionId, groupFolder }, 'terminateSession: session mismatch');
+    logger.debug(
+      { sessionId, groupFolder },
+      'terminateSession: session mismatch',
+    );
     return;
   }
 
@@ -168,10 +168,9 @@ export function terminateSession(sessionId: string, reason: string): void {
   }
 
   // Write transcript to group's inbox
-  const groupInboxDir = path.dirname(session.groupSocketPath).replace(
-    /\/intercom$/,
-    '/intercom/inbox',
-  );
+  const groupInboxDir = path
+    .dirname(session.groupSocketPath)
+    .replace(/\/intercom$/, '/intercom/inbox');
   fs.mkdirSync(groupInboxDir, { recursive: true });
 
   const transcriptFilename = `${Date.now()}-${sessionId}.json`;
@@ -194,10 +193,9 @@ export function terminateSession(sessionId: string, reason: string): void {
 
   // Write session_terminated to main inbox (no transcript_file — main
   // can't read the group's inbox where the transcript lives)
-  const mainInboxDir = path.dirname(session.mainSocketPath).replace(
-    /\/intercom$/,
-    '/intercom/inbox',
-  );
+  const mainInboxDir = path
+    .dirname(session.mainSocketPath)
+    .replace(/\/intercom$/, '/intercom/inbox');
   fs.mkdirSync(mainInboxDir, { recursive: true });
   atomicWriteJson(path.join(mainInboxDir, inboxFilename()), {
     type: 'session_terminated',
@@ -315,7 +313,10 @@ function createProxy(
     conn.on('data', (chunk) => {
       groupBuffer += chunk.toString();
       if (groupBuffer.length > MAX_BUFFER_SIZE && !groupBuffer.includes('\n')) {
-        logger.warn({ sessionId, bufferSize: groupBuffer.length }, 'Group buffer exceeded max size without newline');
+        logger.warn(
+          { sessionId, bufferSize: groupBuffer.length },
+          'Group buffer exceeded max size without newline',
+        );
         tryTerminate('proxy_error');
         return;
       }
@@ -392,7 +393,10 @@ function createProxy(
     conn.on('data', (chunk) => {
       mainBuffer += chunk.toString();
       if (mainBuffer.length > MAX_BUFFER_SIZE && !mainBuffer.includes('\n')) {
-        logger.warn({ sessionId, bufferSize: mainBuffer.length }, 'Main buffer exceeded max size without newline');
+        logger.warn(
+          { sessionId, bufferSize: mainBuffer.length },
+          'Main buffer exceeded max size without newline',
+        );
         tryTerminate('proxy_error');
         return;
       }

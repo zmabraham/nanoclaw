@@ -104,7 +104,11 @@ export function isOwnerSender(sender: string): boolean {
 export async function verifyIpcTrust(
   sourceMessageId: string,
   requiredTier?: 'owner',
-): Promise<{ valid: boolean; tier: 'owner' | 'member' | null; reason?: string }> {
+): Promise<{
+  valid: boolean;
+  tier: 'owner' | 'member' | null;
+  reason?: string;
+}> {
   const { getMessageTrustTier } = await import('./db.js');
 
   const tier = getMessageTrustTier(sourceMessageId);

@@ -80,7 +80,10 @@ describe('formatMessages', () => {
 
   it('includes id attribute in reply branch', () => {
     const result = formatMessages([
-      makeMsg({ id: 'reply-123', reply_to_message_content: 'Original message' }),
+      makeMsg({
+        id: 'reply-123',
+        reply_to_message_content: 'Original message',
+      }),
     ]);
     expect(result).toContain('id="reply-123"');
   });
@@ -113,7 +116,10 @@ describe('formatMessages', () => {
   });
 
   it('escapes special characters in sender names', () => {
-    const result = formatMessages([makeMsg({ sender_name: 'A & B <Co>' })], 'UTC');
+    const result = formatMessages(
+      [makeMsg({ sender_name: 'A & B <Co>' })],
+      'UTC',
+    );
     expect(result).toContain('sender="A &amp; B &lt;Co&gt;"');
   });
 
@@ -208,7 +214,9 @@ describe('formatMessages', () => {
     });
     const result = formatMessages([msg], 'UTC');
     expect(result).toContain('reply_to="abc123"');
-    expect(result).toContain('<quoted_message from="Bob">Original message here</quoted_message>');
+    expect(result).toContain(
+      '<quoted_message from="Bob">Original message here</quoted_message>',
+    );
     expect(result).toContain('id=');
   });
 
