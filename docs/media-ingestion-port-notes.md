@@ -64,32 +64,21 @@ must be installed separately:
   aifs-wiki, whatsapp-contacts, akiflow, gist, google-home,
   voice-transcription-elevenlabs — all out of scope.
 
-## SKILL.md modifications (manual step required)
+## SKILL.md modifications (applied)
 
-The harness blocks writes to `.claude/skills/*/SKILL.md` files in this
-session. Replacement contents for the three media skills are sitting in
-the (untracked) `tmp-patches/` directory. To complete the port, copy each
-file into place:
-
-```bash
-cp tmp-patches/add-pdf-reader-SKILL.md         .claude/skills/add-pdf-reader/SKILL.md
-cp tmp-patches/add-image-vision-SKILL.md       .claude/skills/add-image-vision/SKILL.md
-cp tmp-patches/add-voice-transcription-SKILL.md .claude/skills/add-voice-transcription/SKILL.md
-git add .claude/skills/add-pdf-reader/SKILL.md \
-        .claude/skills/add-image-vision/SKILL.md \
-        .claude/skills/add-voice-transcription/SKILL.md
-git commit -m "docs(skills): route pdf-reader/image-vision/voice-transcription through media-ingestion"
-git push
-rm -rf tmp-patches/
-```
-
-Each updated SKILL.md adds:
-- A top-of-file callout describing the optional "route through media-ingestion" path.
-- A Prerequisites section that splits "with media-ingestion" vs "without".
+The three upstream media skill docs now route through media-ingestion when it's installed. Each has:
+- A top-of-file callout describing the "route through media-ingestion" path.
 - An "If media-ingestion is also installed" subsection inside Phase 2 with the
   concrete steps to register the per-skill `MediaHandler` (handler file path,
-  matches() condition, priority, marker format).
-- A new troubleshooting bullet about handler registration.
+  `matches()` condition, priority, marker format, required `outputMimetype` for
+  image→JPEG transcode).
+- A new troubleshooting bullet about handler registration (including the
+  priority-> fallback interaction for voice-transcription).
+
+Touched files:
+- `.claude/skills/add-pdf-reader/SKILL.md`
+- `.claude/skills/add-image-vision/SKILL.md`
+- `.claude/skills/add-voice-transcription/SKILL.md`
 
 The legacy WhatsApp-only path remains intact for users who don't install
 media-ingestion.
