@@ -14,6 +14,7 @@ import {
   DATA_DIR,
   GROUPS_DIR,
   IDLE_TIMEOUT,
+  OLLAMA_ADMIN_TOOLS,
   TIMEZONE,
 } from './config.js';
 import { resolveGroupFolderPath, resolveGroupIpcPath } from './group-folder.js';
@@ -253,6 +254,11 @@ function buildContainerArgs(
 
   // Failsafe: disable telemetry for any tools running inside the container
   args.push('-e', 'DISABLE_TELEMETRY=1');
+
+  // Forward Ollama admin tools flag if enabled
+  if (OLLAMA_ADMIN_TOOLS) {
+    args.push('-e', 'OLLAMA_ADMIN_TOOLS=true');
+  }
 
   // Route API traffic through the credential proxy (containers never see real secrets)
   args.push(
