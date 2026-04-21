@@ -8,7 +8,55 @@ import { logger } from './logger.js';
  * do with the values. This keeps secrets out of the process environment
  * so they don't leak to child processes.
  */
+const ENV_ALLOWLIST = new Set<string>();
+
+/**
+ * Contribute keys to the union allowlist that `auditEnvAllowlist` checks against.
+ * Must be called from the same module that calls `readEnvFile`, typically at
+ * module load. Invoking multiple times with overlapping keys is safe.
+ */
+export function registerEnvAllowlist(keys: string[]): void {
+  for (const k of keys) ENV_ALLOWLIST.add(k);
+}
+
+/**
+ * One-shot audit at startup: warn for any .env key NOT registered by any
+ * `readEnvFile` caller. Fires once per process.
+ */
+let audited = false;
+export function auditEnvAllowlist(): void {
+  if (audited) return;
+  audited = true;
+  const envFile = path.join(process.cwd(), '.env');
+  let content: string;
+  try {
+    content = fs.readFileSync(envFile, 'utf-8');
+  } catch {
+    return;
+  }
+  for (const line of content.split('\n')) {
+    const t = line.trim();
+    if (!t || t.startsWith('#')) continue;
+    const eq = t.indexOf('=');
+    if (eq === -1) continue;
+    const key = t.slice(0, eq).trim();
+    if (!ENV_ALLOWLIST.has(key)) {
+      logger.warn(
+        { key },
+        `env: unknown .env key "${key}" — not registered by any readEnvFile allowlist, will be ignored`,
+      );
+    }
+  }
+}
+
+/** @internal — for tests only */
+export function _resetEnvAllowlistForTests(): void {
+  ENV_ALLOWLIST.clear();
+  audited = false;
+}
+
 export function readEnvFile(keys: string[]): Record<string, string> {
+  registerEnvAllowlist(keys);
   const envFile = path.join(process.cwd(), '.env');
   let content: string;
   try {
