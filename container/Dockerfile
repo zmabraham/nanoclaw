@@ -44,6 +44,10 @@ RUN npm install
 # Copy source code
 COPY agent-runner/ ./
 
+# Install google-home CLI wrapper
+COPY skills/google-home/google-home /usr/local/bin/google-home
+RUN chmod +x /usr/local/bin/google-home
+
 # Build TypeScript
 RUN npm run build
 

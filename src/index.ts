@@ -47,8 +47,14 @@ import {
   storeMessage,
 } from './db.js';
 import { GroupQueue } from './group-queue.js';
+import {
+  startGoogleAssistantSocket,
+  stopGoogleAssistantSocket,
+} from './google-assistant.js';
 import { resolveGroupFolderPath } from './group-folder.js';
 import { startIpcWatcher } from './ipc.js';
+// Side-effect import: register Google Home IPC handler before dispatch
+import './ipc-handlers/google-home.js';
 import { findChannel, formatMessages, formatOutbound } from './router.js';
 import { ChannelType } from './text-styles.js';
 import {
@@ -614,6 +620,7 @@ async function main(): Promise<void> {
   const shutdown = async (signal: string) => {
     logger.info({ signal }, 'Shutdown signal received');
     proxyServer.close();
+    stopGoogleAssistantSocket();
     await queue.shutdown(10000);
     for (const ch of channels) await ch.disconnect();
     process.exit(0);
@@ -723,6 +730,9 @@ async function main(): Promise<void> {
     logger.fatal('No channels connected');
     process.exit(1);
   }
+
+  // Start Google Assistant socket server for container CLI access
+  startGoogleAssistantSocket();
 
   // Start subsystems (independently of connection handler)
   startSchedulerLoop({

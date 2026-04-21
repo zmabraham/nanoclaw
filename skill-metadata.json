@@ -1,0 +1,7 @@
+{
+  "name": "google-home",
+  "description": "Google Home voice assistant integration via socket server and IPC",
+  "tier": 2,
+  "dependencies": ["ipc-handler-registry"],
+  "also_requires": []
+}
