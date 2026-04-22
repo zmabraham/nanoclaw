@@ -1,6 +1,7 @@
 {
-  "name": "gist",
-  "description": "Share files with users by creating GitHub Gists and returning URLs",
-  "tier": 1,
-  "dependencies": ["ipc-handler-registry"]
+  "name": "google-home",
+  "description": "Google Home voice assistant integration via socket server and IPC",
+  "tier": 2,
+  "dependencies": ["ipc-handler-registry"],
+  "also_requires": []
 }

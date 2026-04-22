@@ -50,12 +50,17 @@ import {
   storeMessage,
 } from './db.js';
 import { GroupQueue } from './group-queue.js';
+import {
+  startGoogleAssistantSocket,
+  stopGoogleAssistantSocket,
+} from './google-assistant.js';
 import { resolveGroupFolderPath } from './group-folder.js';
 import './ipc-handlers/group-lifecycle.js';
 import { startIpcWatcher } from './ipc.js';
 // Side-effect imports: register IPC handlers before dispatch
 import './ipc-handlers/whitelist-edit.js';
 import './ipc-handlers/gist.js';
+import './ipc-handlers/google-home.js';
 import { clearPendingInboxInvocations } from './intercom.js';
 import { findChannel, formatMessages, formatOutbound } from './router.js';
 import { ChannelType } from './text-styles.js';
@@ -762,6 +767,7 @@ async function main(): Promise<void> {
     logger.info({ signal }, 'Shutdown signal received');
     clearPendingInboxInvocations();
     proxyServer.close();
+    stopGoogleAssistantSocket();
     await queue.shutdown(10000);
     for (const ch of channels) await ch.disconnect();
     await statusTracker.shutdown();
@@ -893,6 +899,9 @@ async function main(): Promise<void> {
     logger.fatal('No channels connected');
     process.exit(1);
   }
+
+  // Start Google Assistant socket server for container CLI access
+  startGoogleAssistantSocket();
 
   // Start subsystems (independently of connection handler)
   startSchedulerLoop({

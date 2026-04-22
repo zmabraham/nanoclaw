@@ -259,7 +259,8 @@ function buildVolumeMounts(
     readonly: false,
   });
 
-  // Shared sockets directory (for direct CLI-to-host communication)
+  // Shared sockets directory (for direct CLI-to-host communication,
+  // including Google Home's IPC socket)
   const socketsDir = path.join(DATA_DIR, 'sockets');
   fs.mkdirSync(socketsDir, { recursive: true });
   mounts.push({
