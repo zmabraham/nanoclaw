@@ -71,6 +71,8 @@ def build_app(
     app["stats"] = {"warm_hits": 0, "warm_misses": 0}
     app.router.add_get("/health", handle_health)
     app.router.add_post("/ask", handle_ask)
+    app.router.add_get("/list", handle_list)
+    app.router.add_get("/search", handle_search)
 
     async def _on_startup(app_: web.Application) -> None:
         app_["pool"].start_background_gc()
@@ -185,6 +187,35 @@ async def handle_ask(request: web.Request) -> web.Response:
             "warm_hit": session.hit,
         }
     )
+
+
+def _load_library() -> list[dict[str, Any]]:
+    from notebook_manager import NotebookLibrary  # upstream
+    return list(NotebookLibrary().list_notebooks())
+
+
+def _search_library(query: str) -> list[dict[str, Any]]:
+    from notebook_manager import NotebookLibrary  # upstream
+    return list(NotebookLibrary().search_notebooks(query))
+
+
+async def handle_list(request: web.Request) -> web.Response:
+    try:
+        notebooks = _load_library()
+    except Exception as exc:  # noqa: BLE001
+        return web.json_response({"error": f"failed to load library: {exc}"}, status=500)
+    return web.json_response({"notebooks": notebooks})
+
+
+async def handle_search(request: web.Request) -> web.Response:
+    q = request.query.get("q", "").strip()
+    if not q:
+        return web.json_response({"error": "`q` query parameter is required"}, status=400)
+    try:
+        results = _search_library(q)
+    except Exception as exc:  # noqa: BLE001
+        return web.json_response({"error": f"search failed: {exc}"}, status=500)
+    return web.json_response({"notebooks": results})
 
 
 def _check_auth() -> bool:

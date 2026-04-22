@@ -118,3 +118,65 @@ async def test_ask_400_when_no_notebook_given():
         assert r.status == 400
         body = await r.json()
         assert "notebook" in body["error"].lower()
+
+
+async def test_list_returns_library(monkeypatch):
+    from notebooklm_daemon import build_app
+    from notebooklm_session_pool import SessionPool, PoolConfig
+
+    monkeypatch.setattr(
+        "notebooklm_daemon._load_library",
+        lambda: [
+            {"id": "nb1", "name": "Project A", "description": "d", "topics": ["x"], "url": "https://x/a"},
+            {"id": "nb2", "name": "Project B", "description": "d", "topics": ["y"], "url": "https://x/b"},
+        ],
+    )
+
+    async def fake_launcher(url):
+        raise AssertionError
+
+    app = build_app(pool=SessionPool(PoolConfig(), launcher=fake_launcher))
+    from aiohttp.test_utils import TestClient, TestServer
+    async with TestClient(TestServer(app)) as c:
+        r = await c.get("/list")
+        assert r.status == 200
+        body = await r.json()
+        assert len(body["notebooks"]) == 2
+        assert {n["id"] for n in body["notebooks"]} == {"nb1", "nb2"}
+
+
+async def test_search_filters_library(monkeypatch):
+    from notebooklm_daemon import build_app
+    from notebooklm_session_pool import SessionPool, PoolConfig
+
+    monkeypatch.setattr(
+        "notebooklm_daemon._search_library",
+        lambda q: [
+            {"id": "nb1", "name": "Project A", "description": "about quantum", "topics": ["physics"], "url": "https://x/a"}
+        ],
+    )
+
+    async def fake_launcher(url):
+        raise AssertionError
+
+    app = build_app(pool=SessionPool(PoolConfig(), launcher=fake_launcher))
+    from aiohttp.test_utils import TestClient, TestServer
+    async with TestClient(TestServer(app)) as c:
+        r = await c.get("/search", params={"q": "quantum"})
+        assert r.status == 200
+        body = await r.json()
+        assert body["notebooks"][0]["id"] == "nb1"
+
+
+async def test_search_requires_query_param():
+    from notebooklm_daemon import build_app
+    from notebooklm_session_pool import SessionPool, PoolConfig
+
+    async def fake_launcher(url):
+        raise AssertionError
+
+    app = build_app(pool=SessionPool(PoolConfig(), launcher=fake_launcher))
+    from aiohttp.test_utils import TestClient, TestServer
+    async with TestClient(TestServer(app)) as c:
+        r = await c.get("/search")
+        assert r.status == 400
