@@ -153,6 +153,19 @@ export class GroupQueue {
     }
   }
 
+  /** Check if a group has an active container running. */
+  isActive(groupJid: string): boolean {
+    const state = this.groups.get(groupJid);
+    if (!state || !state.active) return false;
+    // Match sendMessage's liveness check: process may have exited before finally-block cleanup
+    if (
+      state.process &&
+      (state.process.killed || state.process.exitCode != null)
+    )
+      return false;
+    return true;
+  }
+
   /**
    * Send a follow-up message to the active container via IPC file.
    * Returns true if the message was written, false if no active container.
@@ -160,6 +173,13 @@ export class GroupQueue {
   sendMessage(groupJid: string, text: string): boolean {
     const state = this.getGroup(groupJid);
     if (!state.active || !state.groupFolder || state.isTaskContainer)
+      return false;
+    // Don't pipe to a dead container — let messages fall through to enqueueMessageCheck
+    if (
+      !state.process ||
+      state.process.killed ||
+      state.process.exitCode != null
+    )
       return false;
     state.idleWaiting = false; // Agent is about to receive work, no longer idle
 
@@ -210,13 +230,16 @@ export class GroupQueue {
     );
 
     try {
+      let resultOk: boolean;
       if (this.processMessagesFn) {
-        const success = await this.processMessagesFn(groupJid);
-        if (success) {
-          state.retryCount = 0;
-        } else {
-          this.scheduleRetry(groupJid, state);
-        }
+        resultOk = await this.processMessagesFn(groupJid);
+      } else {
+        resultOk = true;
+      }
+      if (resultOk) {
+        state.retryCount = 0;
+      } else {
+        this.scheduleRetry(groupJid, state);
       }
     } catch (err) {
       logger.error({ groupJid, err }, 'Error processing messages for group');
@@ -300,7 +323,7 @@ export class GroupQueue {
       return;
     }
 
-    // Then pending messages
+    // Then pending messages (text path)
     if (state.pendingMessages) {
       this.runForGroup(groupJid, 'drain').catch((err) =>
         logger.error(
@@ -333,6 +356,9 @@ export class GroupQueue {
           ),
         );
       } else if (state.pendingMessages) {
+        // Guard against same-JID duplicate dispatch
+        if (state.active) continue;
+        state.pendingMessages = false;
         this.runForGroup(nextJid, 'drain').catch((err) =>
           logger.error(
             { groupJid: nextJid, err },
@@ -340,12 +366,8 @@ export class GroupQueue {
           ),
         );
       }
-      // If neither pending, skip this group
+      // If nothing pending, skip this group
     }
-  }
-
-  isActive(groupJid: string): boolean {
-    return this.getGroup(groupJid).active;
   }
 
   async shutdown(_gracePeriodMs: number): Promise<void> {

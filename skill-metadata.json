@@ -1,8 +1,6 @@
 {
-  "name": "media-ingestion",
-  "description": "Channel-agnostic media ingestion pipeline for PDF/Image/Voice/Video skills",
+  "name": "intercom",
+  "description": "Inter-container communication: outbox/inbox messaging, trust verification, query response, sync sessions, whitelist management",
   "tier": 1,
-  "dependencies": [
-    "lifecycle-hooks"
-  ]
+  "dependencies": ["ipc-handler-registry"]
 }

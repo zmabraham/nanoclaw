@@ -61,6 +61,7 @@ export interface NewMessage {
    * after file-based media has been processed. Empty/null for text-only messages
    * and non-file media (contact/location/sticker). */
   attachments?: ProcessedAttachmentSummary[] | null;
+  trust_tier?: 'owner' | 'member';
 }
 
 export interface ScheduledTask {

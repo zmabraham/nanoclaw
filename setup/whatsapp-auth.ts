@@ -1,9 +1,11 @@
 /**
  * Step: whatsapp-auth — WhatsApp interactive auth (QR code / pairing code).
  */
-import { execSync, spawn } from 'child_process';
+import { spawn } from 'child_process';
 import fs from 'fs';
 import path from 'path';
+
+import QRCode from 'qrcode';
 
 import { logger } from '../src/logger.js';
 import { openBrowser, isHeadless } from './platform.js';
@@ -189,7 +191,9 @@ export async function run(args: string[]): Promise<void> {
     detached: false,
   });
 
-  const logFile = path.join(projectRoot, 'logs', 'setup.log');
+  const logDir = path.join(projectRoot, 'logs');
+  fs.mkdirSync(logDir, { recursive: true });
+  const logFile = path.join(logDir, 'setup.log');
   const logStream = fs.createWriteStream(logFile, { flags: 'a' });
   authProc.stdout?.pipe(logStream);
   authProc.stderr?.pipe(logStream);
@@ -244,10 +248,7 @@ async function handleQrBrowser(
   // Generate QR SVG and HTML
   const qrData = fs.readFileSync(qrFile, 'utf-8');
   try {
-    const svg = execSync(
-      `node -e "const QR=require('qrcode');const data='${qrData}';QR.toString(data,{type:'svg'},(e,s)=>{if(e)process.exit(1);process.stdout.write(s)})"`,
-      { cwd: projectRoot, encoding: 'utf-8' },
-    );
+    const svg = await QRCode.toString(qrData, { type: 'svg' });
     const html = QR_AUTH_TEMPLATE.replace('{{QR_SVG}}', svg);
     const htmlPath = path.join(projectRoot, 'store', 'qr-auth.html');
     fs.writeFileSync(htmlPath, html);
