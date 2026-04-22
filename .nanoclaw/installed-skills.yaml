@@ -6,3 +6,4 @@ skills:
   - task-scheduler-fixes
   - group-lifecycle
   - ipc-handler-registry
+  - lifecycle-hooks
