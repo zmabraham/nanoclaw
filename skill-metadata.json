@@ -1,6 +1,6 @@
 {
-  "name": "whatsapp-summary",
-  "description": "3-stage multi-agent pipeline for generating daily and weekly WhatsApp group summaries",
+  "name": "message-search",
+  "description": "Semantic message search via RAG",
   "tier": 0,
   "dependencies": []
 }
