@@ -1,6 +1,6 @@
 {
-  "name": "container-hardening",
-  "description": "Container security and reliability improvements: plugins sync, log pruning, safe resolve pattern, shared sockets, CA certs, and additional system packages",
+  "name": "task-scheduler-fixes",
+  "description": "Bug fixes for the task scheduler: group chat safety guard, early next_run advancement to prevent duplicate execution, and scheduleClose cleanup",
   "tier": 0,
   "dependencies": []
 }
