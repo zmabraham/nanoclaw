@@ -1,0 +1,6 @@
+{
+  "name": "container-hardening",
+  "description": "Container security and reliability improvements: plugins sync, log pruning, safe resolve pattern, shared sockets, CA certs, and additional system packages",
+  "tier": 0,
+  "dependencies": []
+}
