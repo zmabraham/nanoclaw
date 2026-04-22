@@ -53,7 +53,8 @@ Each TypeScript file keeps its existing role; the bridge is isolated from `ipc-m
 ## Key pre-implementation context
 
 **Upstream skill structure** (`~/.claude/skills/notebooklm/`):
-- `scripts/run.py` — wrapper that auto-creates `.venv`, installs deps, then runs the target script. Dependencies already installed after first run.
+- `.venv/bin/python` — the upstream-managed Python interpreter; we invoke this directly for our own pytest/pip/daemon commands.
+- `scripts/run.py` — a **name-dispatch** wrapper: auto-creates `.venv` on first run, then runs a target script that must live inside `~/.claude/skills/notebooklm/scripts/`. It does NOT support `-m module` passthrough, arbitrary paths, or scripts outside that directory. So we only use it to invoke the skill's own scripts (`auth_manager.py`, `notebook_manager.py`). For our pytest runs, our daemon, and pip installs into the venv, we call `~/.claude/skills/notebooklm/.venv/bin/python` directly.
 - `scripts/ask_question.py` — the monolithic query flow we're splitting.
 - `scripts/browser_session.py` — existing browser helpers (reuse when possible).
 - `scripts/notebook_manager.py` — library CRUD (we expose list+search as read-only MCP tools).
@@ -68,7 +69,7 @@ Each TypeScript file keeps its existing role; the bridge is isolated from `ipc-m
 
 **Test frameworks:**
 - Node side: `vitest` (root config includes `src/**/*.test.ts` and `setup/**/*.test.ts`). Run with `npm test`.
-- Python side: introduce `pytest` with upstream's `.venv` (dev-only dep in `requirements-notebooklm.txt`). Run with `python ~/.claude/skills/notebooklm/scripts/run.py -m pytest -c scripts/pytest.ini scripts/tests/`.
+- Python side: introduce `pytest` with upstream's `.venv` (dev-only dep in `requirements-notebooklm.txt`). Run with `~/.claude/skills/notebooklm/.venv/bin/python -m pytest -c scripts/pytest.ini scripts/tests/`.
 
 **Project paths:** repo root is `/home/chassidusaicon/code/nanoclaw/.claude/worktrees/unified-cooking-brook/`. All paths in this plan are relative to that root unless they start with `~` or `/`.
 
@@ -155,9 +156,9 @@ async def test_health_returns_ok(client):
 
 ```bash
 cd /home/chassidusaicon/code/nanoclaw/.claude/worktrees/unified-cooking-brook
-python ~/.claude/skills/notebooklm/scripts/run.py -m pip install -r scripts/requirements-notebooklm.txt
+~/.claude/skills/notebooklm/.venv/bin/python -m pip install -r scripts/requirements-notebooklm.txt
 # All subsequent pytest runs use -c scripts/pytest.ini so asyncio_mode=auto is picked up:
-python ~/.claude/skills/notebooklm/scripts/run.py -m pytest -c scripts/pytest.ini scripts/tests/test_daemon_endpoints.py -v
+~/.claude/skills/notebooklm/.venv/bin/python -m pytest -c scripts/pytest.ini scripts/tests/test_daemon_endpoints.py -v
 ```
 
 Expected: `ModuleNotFoundError: No module named 'notebooklm_daemon'` or `ImportError`.
@@ -229,7 +230,7 @@ if __name__ == "__main__":
 - [ ] **Step 1.5: Run test to verify it passes**
 
 ```bash
-python ~/.claude/skills/notebooklm/scripts/run.py -m pytest -c scripts/pytest.ini scripts/tests/test_daemon_endpoints.py -v
+~/.claude/skills/notebooklm/.venv/bin/python -m pytest -c scripts/pytest.ini scripts/tests/test_daemon_endpoints.py -v
 ```
 
 Expected: `test_health_returns_ok PASSED`.
@@ -238,7 +239,7 @@ Expected: `test_health_returns_ok PASSED`.
 
 ```bash
 # In one terminal:
-NOTEBOOKLM_PORT=11435 python ~/.claude/skills/notebooklm/scripts/run.py scripts/notebooklm_daemon.py &
+NOTEBOOKLM_PORT=11435 ~/.claude/skills/notebooklm/.venv/bin/python scripts/notebooklm_daemon.py &
 DAEMON_PID=$!
 sleep 1
 
@@ -471,7 +472,7 @@ async def test_concurrent_miss_same_url_launches_only_once(fake_clock):
 - [ ] **Step 2.2: Run tests to verify they fail**
 
 ```bash
-python ~/.claude/skills/notebooklm/scripts/run.py -m pytest -c scripts/pytest.ini scripts/tests/test_session_pool.py -v
+~/.claude/skills/notebooklm/.venv/bin/python -m pytest -c scripts/pytest.ini scripts/tests/test_session_pool.py -v
 ```
 
 Expected: `ModuleNotFoundError: No module named 'notebooklm_session_pool'`.
@@ -725,7 +726,7 @@ class SessionPool:
 - [ ] **Step 2.4: Run tests to verify they pass**
 
 ```bash
-python ~/.claude/skills/notebooklm/scripts/run.py -m pytest -c scripts/pytest.ini scripts/tests/test_session_pool.py -v
+~/.claude/skills/notebooklm/.venv/bin/python -m pytest -c scripts/pytest.ini scripts/tests/test_session_pool.py -v
 ```
 
 Expected: all 7 tests pass.
@@ -831,7 +832,7 @@ async def test_ask_on_page_raises_on_extract_failure(monkeypatch):
 - [ ] **Step 3.3: Run tests, verify they fail**
 
 ```bash
-python ~/.claude/skills/notebooklm/scripts/run.py -m pytest -c scripts/pytest.ini scripts/tests/test_ask_adapter.py -v
+~/.claude/skills/notebooklm/.venv/bin/python -m pytest -c scripts/pytest.ini scripts/tests/test_ask_adapter.py -v
 ```
 
 Expected: `ModuleNotFoundError: No module named 'notebooklm_ask_adapter'`.
@@ -946,7 +947,7 @@ async def _submit_question_and_extract(page: Any, question: str) -> AskResult:
 - [ ] **Step 3.5: Run unit tests to verify they pass**
 
 ```bash
-python ~/.claude/skills/notebooklm/scripts/run.py -m pytest -c scripts/pytest.ini scripts/tests/test_ask_adapter.py -v
+~/.claude/skills/notebooklm/.venv/bin/python -m pytest -c scripts/pytest.ini scripts/tests/test_ask_adapter.py -v
 ```
 
 Expected: all 3 tests pass.
@@ -1072,7 +1073,7 @@ async def test_ask_400_when_no_notebook_given():
 - [ ] **Step 4.2: Run to confirm they fail**
 
 ```bash
-python ~/.claude/skills/notebooklm/scripts/run.py -m pytest -c scripts/pytest.ini scripts/tests/test_daemon_endpoints.py -v
+~/.claude/skills/notebooklm/.venv/bin/python -m pytest -c scripts/pytest.ini scripts/tests/test_daemon_endpoints.py -v
 ```
 
 Expected: new tests fail; `test_health_returns_ok` still passes.
@@ -1309,7 +1310,7 @@ Note: the retry path releases-then-evicts-then-reacquires; the per-URL lock logi
 - [ ] **Step 4.4: Run full Python test suite**
 
 ```bash
-python ~/.claude/skills/notebooklm/scripts/run.py -m pytest -c scripts/pytest.ini scripts/tests/ -v
+~/.claude/skills/notebooklm/.venv/bin/python -m pytest -c scripts/pytest.ini scripts/tests/ -v
 ```
 
 Expected: all tests pass (including previously passing ones).
@@ -1385,7 +1386,7 @@ async def test_search_filters_library(monkeypatch):
 - [ ] **Step 5.2: Confirm failure**
 
 ```bash
-python ~/.claude/skills/notebooklm/scripts/run.py -m pytest -c scripts/pytest.ini scripts/tests/test_daemon_endpoints.py -v
+~/.claude/skills/notebooklm/.venv/bin/python -m pytest -c scripts/pytest.ini scripts/tests/test_daemon_endpoints.py -v
 ```
 
 Expected: two new tests fail.
@@ -1434,7 +1435,7 @@ app.router.add_get("/search", handle_search)
 - [ ] **Step 5.4: Run tests**
 
 ```bash
-python ~/.claude/skills/notebooklm/scripts/run.py -m pytest -c scripts/pytest.ini scripts/tests/ -v
+~/.claude/skills/notebooklm/.venv/bin/python -m pytest -c scripts/pytest.ini scripts/tests/ -v
 ```
 
 Expected: all pass.
@@ -2170,7 +2171,7 @@ This brings in:
 ### Install Python deps into the skill's venv
 
 ```bash
-python ~/.claude/skills/notebooklm/scripts/run.py -m pip install -r scripts/requirements-notebooklm.txt
+~/.claude/skills/notebooklm/.venv/bin/python -m pip install -r scripts/requirements-notebooklm.txt
 ```
 
 ### Copy agent-runner changes into per-group dirs
@@ -2404,7 +2405,7 @@ git commit -m "feat(notebooklm): env.example defaults + optional macOS watch scr
 npm run typecheck
 npm run build
 npm test
-python ~/.claude/skills/notebooklm/scripts/run.py -m pytest -c scripts/pytest.ini scripts/tests/ -v
+~/.claude/skills/notebooklm/.venv/bin/python -m pytest -c scripts/pytest.ini scripts/tests/ -v
 ./container/build.sh
 ```
 
@@ -2459,7 +2460,7 @@ For each failure, commit a fix with a descriptive message. Do not merge the bran
 
 ## Done criteria
 
-- All Python tests pass (`python ~/.claude/skills/notebooklm/scripts/run.py -m pytest -c scripts/pytest.ini scripts/tests/`).
+- All Python tests pass (`~/.claude/skills/notebooklm/.venv/bin/python -m pytest -c scripts/pytest.ini scripts/tests/`).
 - All Node tests pass (`npm test`).
 - `npm run typecheck` clean.
 - `./container/build.sh` clean.
