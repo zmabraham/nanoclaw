@@ -79,11 +79,17 @@ export function startCredentialProxy(
           }
         }
 
+        // Prepend the base URL path so /v1/messages becomes
+        // https://api.z.ai/api/anthropic/v1/messages when ANTHROPIC_BASE_URL
+        // is https://api.z.ai/api/anthropic
+        const basePath = upstreamUrl.pathname.replace(/\/+$/, '');
+        const proxyPath = basePath + req.url;
+
         const upstream = makeRequest(
           {
             hostname: upstreamUrl.hostname,
             port: upstreamUrl.port || (isHttps ? 443 : 80),
-            path: req.url,
+            path: proxyPath,
             method: req.method,
             headers,
           } as RequestOptions,

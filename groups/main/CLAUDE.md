@@ -256,6 +256,53 @@ Read `/workspace/project/data/registered_groups.json` and format it nicely.
 
 ---
 
+## Research Wiki
+
+You maintain a persistent research wiki in `/workspace/group/wiki/`. Instead of re-deriving answers from raw documents every time, you incrementally build and maintain structured, interlinked markdown pages. Knowledge compiles once and compounds with every source added.
+
+### Three Layers
+
+1. **Sources** (`/workspace/group/sources/`) — Raw immutable documents (PDFs, markdown, images, downloaded pages)
+2. **Wiki** (`/workspace/group/wiki/`) — LLM-owned markdown organized into summaries, entities, concepts, syntheses, and explorations
+3. **Schema** — The `/wiki` container skill (run `/wiki` for detailed workflows)
+
+### Key Files
+
+| File | Purpose |
+|------|---------|
+| `wiki/index.md` | Catalog of all pages — read first when answering queries |
+| `wiki/log.md` | Append-only activity log (`grep "^## \[" wiki/log.md \| tail -5` for recent entries) |
+| `wiki/summaries/` | One summary page per source |
+| `wiki/entities/` | People, orgs, projects, tools |
+| `wiki/concepts/` | Key ideas, frameworks, methods |
+| `wiki/syntheses/` | Cross-source analyses |
+| `wiki/explorations/` | Question-driven deep dives |
+
+### Operations
+
+- **Ingest** — Process new sources one at a time: read, discuss takeaways, create/update ALL related pages (summary, entities, concepts, cross-references, index, log), finish completely before the next source. NEVER batch-read and batch-process — this produces shallow pages.
+- **Query** — Read `wiki/index.md` first, search relevant pages, synthesize with citations (`[[page-slug]]` links). Offer to file substantial answers as exploration pages.
+- **Lint** — Health check for contradictions, orphan pages, missing cross-references, stale content, gaps. Run weekly via scheduled task.
+
+### Source Handling
+
+- **URLs**: Download full content with `curl -sLo sources/filename.pdf "<url>"` or use `agent-browser`. Do NOT use `WebFetch` for wiki ingestion — it returns summaries, not full text.
+- **PDFs**: Read directly with the Read tool or extract text via `pdftotext`.
+- **Images**: Use the Read tool (multimodal) to view and analyze images.
+- **Text/markdown**: Read directly.
+
+### Ingest Discipline
+
+**CRITICAL**: When the user provides multiple files or points at a folder with many files, you MUST process them **one at a time**. For each file:
+1. Read the source
+2. Discuss takeaways with the user
+3. Create/update ALL wiki pages (summary, entities, concepts, cross-references, index, log)
+4. Completely finish with that file before moving to the next
+
+Never batch-read all files and then process them together. Single sources should touch 5-10+ wiki pages. Depth over breadth.
+
+---
+
 ## Global Memory
 
 You can read and write to `/workspace/global/CLAUDE.md` for facts that should apply to all groups. Only update global memory when explicitly asked to "remember this globally" or similar.
