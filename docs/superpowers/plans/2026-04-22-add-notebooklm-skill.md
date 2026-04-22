@@ -68,7 +68,7 @@ Each TypeScript file keeps its existing role; the bridge is isolated from `ipc-m
 
 **Test frameworks:**
 - Node side: `vitest` (root config includes `src/**/*.test.ts` and `setup/**/*.test.ts`). Run with `npm test`.
-- Python side: introduce `pytest` with upstream's `.venv` (dev-only dep in `requirements-notebooklm.txt`). Run with `python ~/.claude/skills/notebooklm/scripts/run.py -m pytest scripts/tests/`.
+- Python side: introduce `pytest` with upstream's `.venv` (dev-only dep in `requirements-notebooklm.txt`). Run with `python ~/.claude/skills/notebooklm/scripts/run.py -m pytest -c scripts/pytest.ini scripts/tests/`.
 
 **Project paths:** repo root is `/home/chassidusaicon/code/nanoclaw/.claude/worktrees/unified-cooking-brook/`. All paths in this plan are relative to that root unless they start with `~` or `/`.
 
@@ -85,7 +85,7 @@ Each TypeScript file keeps its existing role; the bridge is isolated from `ipc-m
 - Create: `scripts/tests/conftest.py`
 - Create: `scripts/tests/test_daemon_endpoints.py`
 
-- [ ] **Step 1.1: Write requirements file**
+- [ ] **Step 1.1: Write requirements file + pytest config**
 
 Create `scripts/requirements-notebooklm.txt`:
 
@@ -96,7 +96,17 @@ pytest-aiohttp>=1.0
 pytest-asyncio>=0.23
 ```
 
+Create `scripts/pytest.ini` (enables `async def test_...` without per-test decorators):
+
+```ini
+[pytest]
+asyncio_mode = auto
+testpaths = tests
+```
+
 - [ ] **Step 1.2: Write failing test for /health**
+
+The daemon module is `scripts/notebooklm_daemon.py` (underscore — Python-import-friendly). Launchd/systemd units invoke it by full path, so the filename is not user-facing.
 
 Create `scripts/tests/__init__.py` as an empty file.
 
@@ -113,38 +123,6 @@ sys.path.insert(0, str(SCRIPTS_DIR))
 ```
 
 Create `scripts/tests/test_daemon_endpoints.py`:
-
-```python
-"""HTTP endpoint tests for the NotebookLM daemon."""
-import pytest
-from aiohttp.test_utils import TestClient, TestServer
-
-import importlib
-
-
-@pytest.fixture
-async def client():
-    module = importlib.import_module('notebooklm-daemon'.replace('-', '_'))
-    app = module.build_app()
-    async with TestClient(TestServer(app)) as c:
-        yield c
-
-
-async def test_health_returns_ok(client):
-    resp = await client.get('/health')
-    assert resp.status == 200
-    body = await resp.json()
-    assert body['ok'] is True
-    assert 'authenticated' in body
-    assert 'warm_sessions' in body
-    assert 'warm_hits' in body
-    assert 'warm_misses' in body
-    assert 'uptime_s' in body
-```
-
-Note: the daemon filename uses a hyphen (`notebooklm-daemon.py`) by convention, but Python imports require an underscore. We'll alias via `scripts/tests/conftest.py`'s `sys.path` and rename the module file to `notebooklm_daemon.py` — cleaner than `importlib` gymnastics. **Rename plan:** use `scripts/notebooklm_daemon.py` (underscore). Launchd/systemd units invoke it by full path anyway.
-
-Revise `scripts/tests/test_daemon_endpoints.py` imports:
 
 ```python
 """HTTP endpoint tests for the NotebookLM daemon."""
@@ -178,7 +156,8 @@ async def test_health_returns_ok(client):
 ```bash
 cd /home/chassidusaicon/code/nanoclaw/.claude/worktrees/unified-cooking-brook
 python ~/.claude/skills/notebooklm/scripts/run.py -m pip install -r scripts/requirements-notebooklm.txt
-python ~/.claude/skills/notebooklm/scripts/run.py -m pytest scripts/tests/test_daemon_endpoints.py -v
+# All subsequent pytest runs use -c scripts/pytest.ini so asyncio_mode=auto is picked up:
+python ~/.claude/skills/notebooklm/scripts/run.py -m pytest -c scripts/pytest.ini scripts/tests/test_daemon_endpoints.py -v
 ```
 
 Expected: `ModuleNotFoundError: No module named 'notebooklm_daemon'` or `ImportError`.
@@ -250,7 +229,7 @@ if __name__ == "__main__":
 - [ ] **Step 1.5: Run test to verify it passes**
 
 ```bash
-python ~/.claude/skills/notebooklm/scripts/run.py -m pytest scripts/tests/test_daemon_endpoints.py -v
+python ~/.claude/skills/notebooklm/scripts/run.py -m pytest -c scripts/pytest.ini scripts/tests/test_daemon_endpoints.py -v
 ```
 
 Expected: `test_health_returns_ok PASSED`.
@@ -274,6 +253,7 @@ kill $DAEMON_PID
 
 ```bash
 git add scripts/requirements-notebooklm.txt \
+        scripts/pytest.ini \
         scripts/notebooklm_daemon.py \
         scripts/tests/__init__.py \
         scripts/tests/conftest.py \
@@ -449,12 +429,49 @@ async def test_evict_closes_browser(fake_clock, fake_launcher):
     finally:
         await pool.release(r2)
     await pool.shutdown()
+
+
+async def test_concurrent_miss_same_url_launches_only_once(fake_clock):
+    """Concurrent acquires against an empty pool must share a single launch."""
+    launch_started = asyncio.Event()
+    launch_proceed = asyncio.Event()
+    launch_count = {"n": 0}
+
+    async def slow_launcher(url: str):
+        launch_count["n"] += 1
+        launch_started.set()
+        await launch_proceed.wait()
+        browser = MagicMock()
+        browser.close = AsyncMock()
+        return browser, MagicMock(), MagicMock()
+
+    pool = SessionPool(PoolConfig(max_warm=3, idle_seconds=9999), launcher=slow_launcher, clock=fake_clock)
+
+    async def try_acquire():
+        r = await pool.acquire("https://x/a")
+        await pool.release(r)
+        return r.hit
+
+    t1 = asyncio.create_task(try_acquire())
+    t2 = asyncio.create_task(try_acquire())
+    t3 = asyncio.create_task(try_acquire())
+
+    await launch_started.wait()
+    # At this point one launch is underway and the others should be awaiting it
+    launch_proceed.set()
+
+    hits = await asyncio.gather(t1, t2, t3)
+    # Exactly one real launch, regardless of which task won the race
+    assert launch_count["n"] == 1
+    # At least two of the three must have been warm hits (served by the leader's entry)
+    assert sum(hits) >= 2
+    await pool.shutdown()
 ```
 
 - [ ] **Step 2.2: Run tests to verify they fail**
 
 ```bash
-python ~/.claude/skills/notebooklm/scripts/run.py -m pytest scripts/tests/test_session_pool.py -v
+python ~/.claude/skills/notebooklm/scripts/run.py -m pytest -c scripts/pytest.ini scripts/tests/test_session_pool.py -v
 ```
 
 Expected: `ModuleNotFoundError: No module named 'notebooklm_session_pool'`.
@@ -526,6 +543,8 @@ class SessionPool:
         self._launcher = launcher
         self._clock: Clock = clock if clock is not None else time.monotonic
         self._entries: "OrderedDict[str, _Entry]" = OrderedDict()
+        # In-flight launches for the same URL share a future so we never spawn twice.
+        self._pending: dict[str, asyncio.Future[_Entry]] = {}
         self._table_lock = asyncio.Lock()
         self._gc_task: asyncio.Task | None = None
 
@@ -534,44 +553,91 @@ class SessionPool:
             browser, context, page = await self._launcher(notebook_url)
             return AcquiredSession(notebook_url, browser, context, page, hit=False, _pool=self)
 
-        # Phase 1: locate-or-reserve under the table lock
-        async with self._table_lock:
-            entry = self._entries.get(notebook_url)
-            if entry is not None:
-                # Move to MRU position
-                self._entries.move_to_end(notebook_url)
+        # Retry loop: if a concurrent evictor invalidates our entry while we're
+        # waiting on its per-entry lock, we restart the lookup from the top.
+        while True:
+            leader = False
+            fut: asyncio.Future[_Entry] | None = None
 
-        if entry is not None:
-            # Serialize on the per-entry lock so concurrent acquires of the same URL queue
-            await entry.lock.acquire()
-            # Re-validate after lock: entry may have been evicted between waits
             async with self._table_lock:
-                still_there = self._entries.get(notebook_url) is entry
-            if still_there:
-                entry.last_used_at = self._clock()
-                return AcquiredSession(
-                    notebook_url, entry.browser, entry.context, entry.page, hit=True, _pool=self
-                )
-            # Evicted while we waited — release and fall through to launch
-            entry.lock.release()
+                entry = self._entries.get(notebook_url)
+                if entry is not None:
+                    self._entries.move_to_end(notebook_url)
+                else:
+                    pending = self._pending.get(notebook_url)
+                    if pending is None:
+                        # We're the leader for this URL's launch.
+                        fut = asyncio.get_event_loop().create_future()
+                        self._pending[notebook_url] = fut
+                        leader = True
+                    else:
+                        fut = pending
 
-        # Phase 2: launch + insert
-        browser, context, page = await self._launcher(notebook_url)
-        new_entry = _Entry(notebook_url, browser, context, page, self._clock())
-        await new_entry.lock.acquire()
+            if entry is not None:
+                # Warm-hit candidate: wait for the per-entry lock, then re-validate.
+                await entry.lock.acquire()
+                async with self._table_lock:
+                    still_there = self._entries.get(notebook_url) is entry
+                if still_there:
+                    entry.last_used_at = self._clock()
+                    return AcquiredSession(
+                        notebook_url, entry.browser, entry.context, entry.page, hit=True, _pool=self
+                    )
+                # Evicted while we waited — release and retry from the top.
+                entry.lock.release()
+                continue
 
-        to_close: list[_Entry] = []
-        async with self._table_lock:
-            self._entries[notebook_url] = new_entry
-            self._entries.move_to_end(notebook_url)
-            while len(self._entries) > self._config.max_warm:
-                _, evicted = self._entries.popitem(last=False)
-                to_close.append(evicted)
+            if not leader:
+                # Another task is launching for this URL. Wait for them, then retry lookup.
+                assert fut is not None
+                try:
+                    new_entry = await fut
+                except Exception:
+                    # Leader failed — retry from top (next iteration will either
+                    # become leader itself or find a fresh pending entry).
+                    continue
+                # Claim a shared warm hit on the freshly launched entry.
+                await new_entry.lock.acquire()
+                async with self._table_lock:
+                    still_there = self._entries.get(notebook_url) is new_entry
+                if still_there:
+                    new_entry.last_used_at = self._clock()
+                    return AcquiredSession(
+                        notebook_url, new_entry.browser, new_entry.context, new_entry.page, hit=True, _pool=self
+                    )
+                new_entry.lock.release()
+                continue
 
-        for ev in to_close:
-            await self._close_entry(ev)
+            # Leader path: perform the actual launch exactly once.
+            assert fut is not None
+            try:
+                browser, context, page = await self._launcher(notebook_url)
+            except Exception as exc:
+                async with self._table_lock:
+                    self._pending.pop(notebook_url, None)
+                if not fut.done():
+                    fut.set_exception(exc)
+                raise
 
-        return AcquiredSession(notebook_url, browser, context, page, hit=False, _pool=self)
+            new_entry = _Entry(notebook_url, browser, context, page, self._clock())
+            await new_entry.lock.acquire()
+
+            to_close: list[_Entry] = []
+            async with self._table_lock:
+                self._entries[notebook_url] = new_entry
+                self._entries.move_to_end(notebook_url)
+                while len(self._entries) > self._config.max_warm:
+                    _, evicted = self._entries.popitem(last=False)
+                    to_close.append(evicted)
+                self._pending.pop(notebook_url, None)
+
+            if not fut.done():
+                fut.set_result(new_entry)
+
+            for ev in to_close:
+                await self._close_entry(ev)
+
+            return AcquiredSession(notebook_url, browser, context, page, hit=False, _pool=self)
 
     async def release(self, session: AcquiredSession) -> None:
         if not self._config.warm_enabled:
@@ -659,7 +725,7 @@ class SessionPool:
 - [ ] **Step 2.4: Run tests to verify they pass**
 
 ```bash
-python ~/.claude/skills/notebooklm/scripts/run.py -m pytest scripts/tests/test_session_pool.py -v
+python ~/.claude/skills/notebooklm/scripts/run.py -m pytest -c scripts/pytest.ini scripts/tests/test_session_pool.py -v
 ```
 
 Expected: all 7 tests pass.
@@ -765,7 +831,7 @@ async def test_ask_on_page_raises_on_extract_failure(monkeypatch):
 - [ ] **Step 3.3: Run tests, verify they fail**
 
 ```bash
-python ~/.claude/skills/notebooklm/scripts/run.py -m pytest scripts/tests/test_ask_adapter.py -v
+python ~/.claude/skills/notebooklm/scripts/run.py -m pytest -c scripts/pytest.ini scripts/tests/test_ask_adapter.py -v
 ```
 
 Expected: `ModuleNotFoundError: No module named 'notebooklm_ask_adapter'`.
@@ -880,7 +946,7 @@ async def _submit_question_and_extract(page: Any, question: str) -> AskResult:
 - [ ] **Step 3.5: Run unit tests to verify they pass**
 
 ```bash
-python ~/.claude/skills/notebooklm/scripts/run.py -m pytest scripts/tests/test_ask_adapter.py -v
+python ~/.claude/skills/notebooklm/scripts/run.py -m pytest -c scripts/pytest.ini scripts/tests/test_ask_adapter.py -v
 ```
 
 Expected: all 3 tests pass.
@@ -1006,7 +1072,7 @@ async def test_ask_400_when_no_notebook_given():
 - [ ] **Step 4.2: Run to confirm they fail**
 
 ```bash
-python ~/.claude/skills/notebooklm/scripts/run.py -m pytest scripts/tests/test_daemon_endpoints.py -v
+python ~/.claude/skills/notebooklm/scripts/run.py -m pytest -c scripts/pytest.ini scripts/tests/test_daemon_endpoints.py -v
 ```
 
 Expected: new tests fail; `test_health_returns_ok` still passes.
@@ -1145,57 +1211,63 @@ async def handle_ask(request: web.Request) -> web.Response:
     pool: SessionPool = request.app["pool"]
     ask = request.app["ask_on_page"]
     stats = request.app["stats"]
+    nb_url = notebook["url"]
 
-    # Acquire + ask, with at most one retry-with-fresh on reuse failure.
-    session = await pool.acquire(notebook["url"])
+    # First attempt (may be warm hit or cache miss).
+    session = await pool.acquire(nb_url)
     try:
         result = await ask(session.page, question)
-        if session.hit:
-            stats["warm_hits"] += 1
-        else:
-            stats["warm_misses"] += 1
+    except Exception as exc:  # noqa: BLE001
+        was_hit = session.hit
+        # Broken page — get it out of the cache either way.
+        await pool.release(session)
+        await pool.evict(nb_url)
+
+        if not was_hit:
+            # Initial launch path — spec says no retry; surface immediately.
+            return web.json_response(
+                {"error": f"ask failed: {exc}", "hint": "check daemon logs"},
+                status=500,
+            )
+
+        # Reuse failure — one retry with fresh Chromium.
+        LOG.warning("Reuse failure on %s: %s — retrying fresh", nb_url, exc)
+        retry_session = await pool.acquire(nb_url)
+        try:
+            result = await ask(retry_session.page, question)
+        except Exception as exc2:  # noqa: BLE001
+            await pool.release(retry_session)
+            await pool.evict(nb_url)
+            return web.json_response(
+                {"error": f"ask failed after retry: {exc2}", "hint": "check daemon logs"},
+                status=500,
+            )
+        # Retry succeeded — release (re-cache) and report as miss.
+        stats["warm_misses"] += 1
+        await pool.release(retry_session)
         return web.json_response(
             {
                 "answer": result.answer,
                 "citations": result.citations,
                 "notebook": notebook,
-                "warm_hit": session.hit,
+                "warm_hit": False,
             }
         )
-    except Exception as exc:  # noqa: BLE001
-        if session.hit:
-            # Reuse failed — evict and retry once with a fresh session.
-            LOG.warning("Reuse failure on %s: %s — retrying fresh", notebook["url"], exc)
-            await pool.release(session)
-            await pool.evict(notebook["url"])
-            session = await pool.acquire(notebook["url"])
-            try:
-                result = await ask(session.page, question)
-                stats["warm_misses"] += 1
-                return web.json_response(
-                    {
-                        "answer": result.answer,
-                        "citations": result.citations,
-                        "notebook": notebook,
-                        "warm_hit": False,
-                    }
-                )
-            except Exception as exc2:  # noqa: BLE001
-                return web.json_response(
-                    {"error": f"ask failed after retry: {exc2}", "hint": "check daemon logs"},
-                    status=500,
-                )
-        # Initial launch path — surface immediately
-        return web.json_response(
-            {"error": f"ask failed: {exc}", "hint": "check daemon logs"},
-            status=500,
-        )
-    finally:
-        # If the final session is still valid, release it; otherwise already released above.
-        try:
-            await pool.release(session)
-        except Exception:  # noqa: BLE001
-            pass
+
+    # First attempt succeeded.
+    if session.hit:
+        stats["warm_hits"] += 1
+    else:
+        stats["warm_misses"] += 1
+    await pool.release(session)
+    return web.json_response(
+        {
+            "answer": result.answer,
+            "citations": result.citations,
+            "notebook": notebook,
+            "warm_hit": session.hit,
+        }
+    )
 
 
 def _check_auth() -> bool:
@@ -1237,7 +1309,7 @@ Note: the retry path releases-then-evicts-then-reacquires; the per-URL lock logi
 - [ ] **Step 4.4: Run full Python test suite**
 
 ```bash
-python ~/.claude/skills/notebooklm/scripts/run.py -m pytest scripts/tests/ -v
+python ~/.claude/skills/notebooklm/scripts/run.py -m pytest -c scripts/pytest.ini scripts/tests/ -v
 ```
 
 Expected: all tests pass (including previously passing ones).
@@ -1313,7 +1385,7 @@ async def test_search_filters_library(monkeypatch):
 - [ ] **Step 5.2: Confirm failure**
 
 ```bash
-python ~/.claude/skills/notebooklm/scripts/run.py -m pytest scripts/tests/test_daemon_endpoints.py -v
+python ~/.claude/skills/notebooklm/scripts/run.py -m pytest -c scripts/pytest.ini scripts/tests/test_daemon_endpoints.py -v
 ```
 
 Expected: two new tests fail.
@@ -1362,7 +1434,7 @@ app.router.add_get("/search", handle_search)
 - [ ] **Step 5.4: Run tests**
 
 ```bash
-python ~/.claude/skills/notebooklm/scripts/run.py -m pytest scripts/tests/ -v
+python ~/.claude/skills/notebooklm/scripts/run.py -m pytest -c scripts/pytest.ini scripts/tests/ -v
 ```
 
 Expected: all pass.
@@ -1381,11 +1453,14 @@ git commit -m "feat(notebooklm): /list and /search endpoints over upstream libra
 **Goal:** TypeScript MCP server inside the container that exposes `notebooklm_ask`, `notebooklm_list`, `notebooklm_search` to the agent. Each tool HTTP-calls the host daemon via `host.docker.internal:$NOTEBOOKLM_PORT`.
 
 **Files:**
-- Create: `container/agent-runner/src/notebooklm-mcp-stdio.ts`
-- Create: `container/agent-runner/src/notebooklm-mcp-stdio.test.ts`
+- Create: `container/agent-runner/src/notebooklm-http-client.ts` — pure fetch wrappers, NO MCP SDK imports
+- Create: `container/agent-runner/src/notebooklm-http-client.test.ts` — tests the fetch wrappers only
+- Create: `container/agent-runner/src/notebooklm-mcp-stdio.ts` — entry point, imports http-client + MCP SDK, registers tools
+
+**Why two files (important):** `@modelcontextprotocol/sdk` is declared in `container/agent-runner/package.json`, NOT in the repo root `package.json`. If `notebooklm-mcp-stdio.ts` imports the MCP SDK at top level and vitest (running from the repo root) tries to load it, the test will fail with `Cannot find module`. Keeping all test-covered logic in `notebooklm-http-client.ts` (zero MCP imports) means tests load cleanly. The MCP entry file is never imported by tests — only invoked as a subprocess entrypoint at container runtime, where agent-runner's local `node_modules` provides the SDK.
 
 **Caveats:**
-- `vitest.config.ts` includes `src/**/*.test.ts` — **not** `container/agent-runner/src/**`. That's fine: container-side agent-runner tests traditionally sit under the repo's top-level test config via its own path, or are run from `container/agent-runner/` if a second vitest config exists. For this plan, we add tests under `container/agent-runner/src/` and update vitest config to include them so `npm test` picks them up.
+- `vitest.config.ts` includes `src/**/*.test.ts` — **not** `container/agent-runner/src/**`. We update the root vitest config to include the http-client test file (only) so `npm test` picks it up.
 
 - [ ] **Step 6.1: Update vitest config to include container agent-runner tests**
 
@@ -1406,17 +1481,22 @@ Modify `vitest.config.ts`:
  });
 ```
 
+**Important:** only `notebooklm-http-client.test.ts` will match. The entry file `notebooklm-mcp-stdio.ts` has no `.test.ts` companion (its imports need container-side node_modules). Do not co-locate tests against it.
+
 - [ ] **Step 6.2: Write the failing test**
 
-Create `container/agent-runner/src/notebooklm-mcp-stdio.test.ts`:
+Create `container/agent-runner/src/notebooklm-http-client.test.ts`:
 
 ```typescript
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { callAsk, callList, callSearch } from './notebooklm-mcp-stdio';
+import { callAsk, callList, callSearch, DaemonError } from './notebooklm-http-client';
 
-describe('notebooklm MCP → daemon HTTP calls', () => {
+describe('notebooklm HTTP client (daemon calls)', () => {
   const originalFetch = globalThis.fetch;
-  beforeEach(() => { process.env.NOTEBOOKLM_PORT = '11999'; });
+  beforeEach(() => {
+    process.env.NOTEBOOKLM_PORT = '11999';
+    delete process.env.NOTEBOOKLM_HOST;
+  });
   afterEach(() => { globalThis.fetch = originalFetch; });
 
   it('callAsk POSTs to /ask on host.docker.internal', async () => {
@@ -1439,16 +1519,17 @@ describe('notebooklm MCP → daemon HTTP calls', () => {
     expect(fetchMock).toHaveBeenCalledOnce();
   });
 
-  it('callAsk surfaces daemon HTTP errors with hint', async () => {
+  it('callAsk surfaces daemon HTTP errors with structured hint', async () => {
     globalThis.fetch = (async () =>
       new Response(
         JSON.stringify({ error: 'notebook not found', hint: 'use notebooklm_list' }),
         { status: 400, headers: { 'content-type': 'application/json' } },
       )) as typeof fetch;
 
-    await expect(callAsk({ question: 'q' })).rejects.toMatchObject({
-      message: expect.stringContaining('notebook not found'),
-    });
+    const err = await callAsk({ question: 'q' }).catch((e) => e);
+    expect(err).toBeInstanceOf(DaemonError);
+    expect((err as DaemonError).message).toContain('notebook not found');
+    expect((err as DaemonError).hint).toBe('use notebooklm_list');
   });
 
   it('callList GETs /list', async () => {
@@ -1460,12 +1541,12 @@ describe('notebooklm MCP → daemon HTTP calls', () => {
     expect(res.notebooks).toHaveLength(1);
   });
 
-  it('callSearch GETs /search with query', async () => {
+  it('callSearch GETs /search with url-encoded query', async () => {
     globalThis.fetch = (async (url: string) => {
-      expect(url).toBe('http://host.docker.internal:11999/search?q=quantum');
+      expect(url).toBe('http://host.docker.internal:11999/search?q=quantum%20physics');
       return new Response(JSON.stringify({ notebooks: [] }), { status: 200 });
     }) as typeof fetch;
-    await callSearch({ query: 'quantum' });
+    await callSearch({ query: 'quantum physics' });
   });
 });
 ```
@@ -1474,38 +1555,40 @@ describe('notebooklm MCP → daemon HTTP calls', () => {
 
 ```bash
 cd /home/chassidusaicon/code/nanoclaw/.claude/worktrees/unified-cooking-brook
-npm test -- container/agent-runner/src/notebooklm-mcp-stdio.test.ts
+npm test -- container/agent-runner/src/notebooklm-http-client.test.ts
 ```
 
 Expected: import error (module does not exist).
 
-- [ ] **Step 6.4: Implement the MCP stdio server**
+- [ ] **Step 6.4: Implement the HTTP client (no MCP deps)**
 
-Create `container/agent-runner/src/notebooklm-mcp-stdio.ts`:
+Create `container/agent-runner/src/notebooklm-http-client.ts`:
 
 ```typescript
 /**
- * NotebookLM MCP stdio bridge.
- * Runs inside the main-group agent container. Agents get tools:
- *   notebooklm_ask, notebooklm_list, notebooklm_search
- * Each tool POSTs/GETs against the host daemon on
- *   http://host.docker.internal:${NOTEBOOKLM_PORT}
+ * NotebookLM HTTP client.
+ *
+ * Pure fetch wrappers for the host daemon on
+ *   http://${NOTEBOOKLM_HOST | host.docker.internal}:${NOTEBOOKLM_PORT | 11435}
+ *
+ * Deliberately has NO MCP SDK imports so root-level vitest can load and
+ * test it without the SDK being installed in the repo root.
  */
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
-import { z } from 'zod';
+function baseUrl(): string {
+  const host = process.env.NOTEBOOKLM_HOST || 'host.docker.internal';
+  const port = process.env.NOTEBOOKLM_PORT || '11435';
+  return `http://${host}:${port}`;
+}
 
-const HOST = process.env.NOTEBOOKLM_HOST || 'host.docker.internal';
-const PORT = process.env.NOTEBOOKLM_PORT || '11435';
-const BASE = `http://${HOST}:${PORT}`;
-
-class DaemonError extends Error {
-  constructor(message: string, public hint?: string) {
+export class DaemonError extends Error {
+  public readonly hint?: string;
+  constructor(message: string, hint?: string) {
     super(hint ? `${message} (hint: ${hint})` : message);
+    this.hint = hint;
   }
 }
 
-async function daemonJson(resp: Response): Promise<unknown> {
+async function daemonJson(resp: Response): Promise<Record<string, unknown>> {
   const text = await resp.text();
   let body: Record<string, unknown> = {};
   try { body = text ? JSON.parse(text) : {}; } catch { /* keep empty */ }
@@ -1526,89 +1609,116 @@ export interface AskResponse {
 }
 
 export async function callAsk(args: AskArgs): Promise<AskResponse> {
-  const resp = await fetch(`${BASE}/ask`, {
+  const resp = await fetch(`${baseUrl()}/ask`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify(args),
   });
-  return (await daemonJson(resp)) as AskResponse;
+  return (await daemonJson(resp)) as unknown as AskResponse;
 }
 
 export async function callList(): Promise<{ notebooks: unknown[] }> {
-  const resp = await fetch(`${BASE}/list`);
-  return (await daemonJson(resp)) as { notebooks: unknown[] };
+  const resp = await fetch(`${baseUrl()}/list`);
+  return (await daemonJson(resp)) as unknown as { notebooks: unknown[] };
 }
 
 export async function callSearch(args: { query: string }): Promise<{ notebooks: unknown[] }> {
-  const url = `${BASE}/search?q=${encodeURIComponent(args.query)}`;
+  const url = `${baseUrl()}/search?q=${encodeURIComponent(args.query)}`;
   const resp = await fetch(url);
-  return (await daemonJson(resp)) as { notebooks: unknown[] };
-}
-
-// --- MCP wiring (only executed when run as the server entrypoint) ---
-
-if (import.meta.url === `file://${process.argv[1]}`) {
-  const server = new McpServer({ name: 'notebooklm', version: '1.0.0' });
-
-  server.tool(
-    'notebooklm_ask',
-    'Ask a question of a private Google NotebookLM notebook. Returns a source-grounded answer with citations. Prefer passing notebook_id over notebook_url when both are known — id wins if both are provided.',
-    {
-      question: z.string().describe('The question to ask the notebook.'),
-      notebook_id: z.string().optional().describe('Notebook id from notebooklm_list.'),
-      notebook_url: z.string().optional().describe('Direct NotebookLM URL; used when id is unknown.'),
-    },
-    async (args) => {
-      const out = await callAsk(args);
-      const text = [
-        out.answer,
-        out.citations.length ? `\n\nCitations:\n${JSON.stringify(out.citations, null, 2)}` : '',
-        `\n\n(notebook=${out.notebook.name || out.notebook.id || out.notebook.url}, warm_hit=${out.warm_hit})`,
-      ].join('');
-      return { content: [{ type: 'text' as const, text }] };
-    },
-  );
-
-  server.tool(
-    'notebooklm_list',
-    'List notebooks in the local NotebookLM library with their ids, names, descriptions, and topics.',
-    {},
-    async () => {
-      const out = await callList();
-      return { content: [{ type: 'text' as const, text: JSON.stringify(out.notebooks, null, 2) }] };
-    },
-  );
-
-  server.tool(
-    'notebooklm_search',
-    'Search the local NotebookLM library by topic/keyword. Returns matching notebooks with their metadata.',
-    { query: z.string().describe('Search term to match against topics, names, and descriptions.') },
-    async (args) => {
-      const out = await callSearch(args);
-      return { content: [{ type: 'text' as const, text: JSON.stringify(out.notebooks, null, 2) }] };
-    },
-  );
-
-  const transport = new StdioServerTransport();
-  await server.connect(transport);
+  return (await daemonJson(resp)) as unknown as { notebooks: unknown[] };
 }
 ```
 
-- [ ] **Step 6.5: Run tests**
+- [ ] **Step 6.5: Run tests to verify they pass**
 
 ```bash
-npm test -- container/agent-runner/src/notebooklm-mcp-stdio.test.ts
+npm test -- container/agent-runner/src/notebooklm-http-client.test.ts
 ```
 
 Expected: all 4 tests pass.
 
-- [ ] **Step 6.6: Commit**
+- [ ] **Step 6.6: Implement the MCP stdio entry point**
+
+Create `container/agent-runner/src/notebooklm-mcp-stdio.ts`:
+
+```typescript
+/**
+ * NotebookLM MCP stdio bridge — entry point.
+ *
+ * Launched by agent-runner as a subprocess (stdio transport). Imports
+ * the MCP SDK (resolved from container/agent-runner/node_modules at
+ * runtime) and the test-covered HTTP client. This file is NEVER
+ * imported by vitest — tests live against notebooklm-http-client.ts.
+ */
+import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
+import { z } from 'zod';
+
+import { callAsk, callList, callSearch } from './notebooklm-http-client.js';
+
+const server = new McpServer({ name: 'notebooklm', version: '1.0.0' });
+
+server.tool(
+  'notebooklm_ask',
+  'Ask a question of a private Google NotebookLM notebook. Returns a source-grounded answer with citations. Prefer passing notebook_id over notebook_url when both are known — id wins if both are provided.',
+  {
+    question: z.string().describe('The question to ask the notebook.'),
+    notebook_id: z.string().optional().describe('Notebook id from notebooklm_list.'),
+    notebook_url: z.string().optional().describe('Direct NotebookLM URL; used when id is unknown.'),
+  },
+  async (args) => {
+    const out = await callAsk(args);
+    const text = [
+      out.answer,
+      out.citations.length ? `\n\nCitations:\n${JSON.stringify(out.citations, null, 2)}` : '',
+      `\n\n(notebook=${out.notebook.name || out.notebook.id || out.notebook.url}, warm_hit=${out.warm_hit})`,
+    ].join('');
+    return { content: [{ type: 'text' as const, text }] };
+  },
+);
+
+server.tool(
+  'notebooklm_list',
+  'List notebooks in the local NotebookLM library with their ids, names, descriptions, and topics.',
+  {},
+  async () => {
+    const out = await callList();
+    return { content: [{ type: 'text' as const, text: JSON.stringify(out.notebooks, null, 2) }] };
+  },
+);
+
+server.tool(
+  'notebooklm_search',
+  'Search the local NotebookLM library by topic/keyword. Returns matching notebooks with their metadata.',
+  { query: z.string().describe('Search term to match against topics, names, and descriptions.') },
+  async (args) => {
+    const out = await callSearch(args);
+    return { content: [{ type: 'text' as const, text: JSON.stringify(out.notebooks, null, 2) }] };
+  },
+);
+
+const transport = new StdioServerTransport();
+await server.connect(transport);
+```
+
+- [ ] **Step 6.7: Build the agent-runner to typecheck the MCP entrypoint**
+
+The MCP entry file is not test-covered, so we rely on TypeScript compilation inside the container build to catch errors.
+
+```bash
+./container/build.sh
+```
+
+Expected: clean build. If it complains about missing `@modelcontextprotocol/sdk`, verify it is still listed in `container/agent-runner/package.json` — do not add it to the root package.json.
+
+- [ ] **Step 6.8: Commit**
 
 ```bash
 git add vitest.config.ts \
-        container/agent-runner/src/notebooklm-mcp-stdio.ts \
-        container/agent-runner/src/notebooklm-mcp-stdio.test.ts
-git commit -m "feat(notebooklm): container-side MCP stdio bridge → host daemon"
+        container/agent-runner/src/notebooklm-http-client.ts \
+        container/agent-runner/src/notebooklm-http-client.test.ts \
+        container/agent-runner/src/notebooklm-mcp-stdio.ts
+git commit -m "feat(notebooklm): container-side MCP stdio bridge + HTTP client"
 ```
 
 ---
@@ -1620,9 +1730,14 @@ git commit -m "feat(notebooklm): container-side MCP stdio bridge → host daemon
 **Files:**
 - Modify: `container/agent-runner/src/index.ts`
 
-- [ ] **Step 7.1: Locate the `mcpServers` block**
+- [ ] **Step 7.1: Locate the `mcpServers` block and confirm `isMain` is in scope**
 
-Inside `runQuery` there is a `mcpServers: { nanoclaw: { ... } }` option (around line 416 of current file). We'll add a conditional second entry.
+```bash
+grep -n "mcpServers" container/agent-runner/src/index.ts
+grep -n "isMain" container/agent-runner/src/index.ts
+```
+
+Expect the first grep to find a `mcpServers: { nanoclaw: { ... } }` option inside `runQuery`. Expect the second to show that `containerInput.isMain` is already referenced in the same function body. If `containerInput.isMain` is *not* already in scope where we need it, add it via the existing `containerInput` parameter — do not re-plumb.
 
 - [ ] **Step 7.2: Extend `allowedTools` conditionally and add the MCP server**
 
@@ -1809,7 +1924,14 @@ export function surfaceNotebooklmLog(line: string, write: (msg: string) => void)
 }
 ```
 
-2. **Wire `buildContainerEnvArgs` into the container spawn.** Find where other `-e` (env) flags are passed to `docker run`/`apple-container run`. Add:
+2. **Wire `buildContainerEnvArgs` into the container spawn.** Find where other `-e` (env) flags are passed to `docker run`/`apple-container run`:
+
+```bash
+grep -n "'-e'" src/container-runner.ts
+grep -n '"-e"' src/container-runner.ts
+```
+
+These should land you at the env-flag emission site. Add:
 
 ```typescript
 const notebooklmEnvArgs = buildContainerEnvArgs({
@@ -2272,6 +2394,24 @@ git commit -m "feat(notebooklm): env.example defaults + optional macOS watch scr
 
 ---
 
+## Task 11.5: Pre-verification gate — run all automated checks
+
+**Goal:** all quality gates pass before any manual end-to-end work.
+
+- [ ] **Step 11.5.1: Typecheck + build + tests + container build, in order**
+
+```bash
+npm run typecheck
+npm run build
+npm test
+python ~/.claude/skills/notebooklm/scripts/run.py -m pytest -c scripts/pytest.ini scripts/tests/ -v
+./container/build.sh
+```
+
+All five commands must succeed. Fix any failure before proceeding; no commits required if nothing broke.
+
+---
+
 ## Task 12: Full integration verification (manual, no commits unless issues)
 
 **Goal:** install end-to-end on the user's host, run the bleed-through check, confirm warm-hit behavior.
@@ -2319,7 +2459,7 @@ For each failure, commit a fix with a descriptive message. Do not merge the bran
 
 ## Done criteria
 
-- All Python tests pass (`python ~/.claude/skills/notebooklm/scripts/run.py -m pytest scripts/tests/`).
+- All Python tests pass (`python ~/.claude/skills/notebooklm/scripts/run.py -m pytest -c scripts/pytest.ini scripts/tests/`).
 - All Node tests pass (`npm test`).
 - `npm run typecheck` clean.
 - `./container/build.sh` clean.
