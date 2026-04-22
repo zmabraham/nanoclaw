@@ -1,0 +1,17 @@
+[Unit]
+Description=NanoClaw NotebookLM daemon
+After=network.target
+
+[Service]
+Type=simple
+Environment=NOTEBOOKLM_PORT=__PORT__
+Environment=NOTEBOOKLM_WARM_SESSIONS=1
+Environment=NOTEBOOKLM_IDLE_SECONDS=90
+Environment=NOTEBOOKLM_MAX_WARM=3
+WorkingDirectory=__WORKDIR__
+ExecStart=__PYTHON__ __SCRIPT__
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target

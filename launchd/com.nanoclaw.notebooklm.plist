@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.nanoclaw.notebooklm</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>__PYTHON__</string>
+    <string>__SCRIPT__</string>
+  </array>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>NOTEBOOKLM_PORT</key>
+    <string>__PORT__</string>
+    <key>NOTEBOOKLM_WARM_SESSIONS</key>
+    <string>1</string>
+    <key>NOTEBOOKLM_IDLE_SECONDS</key>
+    <string>90</string>
+    <key>NOTEBOOKLM_MAX_WARM</key>
+    <string>3</string>
+  </dict>
+
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+
+  <key>StandardOutPath</key>
+  <string>__LOG_DIR__/notebooklm-daemon.log</string>
+  <key>StandardErrorPath</key>
+  <string>__LOG_DIR__/notebooklm-daemon.log</string>
+
+  <key>WorkingDirectory</key>
+  <string>__WORKDIR__</string>
+</dict>
+</plist>
