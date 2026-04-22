@@ -407,7 +407,8 @@ async function runQuery(
         'TeamCreate', 'TeamDelete', 'SendMessage',
         'TodoWrite', 'ToolSearch', 'Skill',
         'NotebookEdit',
-        'mcp__nanoclaw__*'
+        'mcp__nanoclaw__*',
+        ...(containerInput.isMain ? ['mcp__notebooklm__*'] : []),
       ],
       env: sdkEnv,
       permissionMode: 'bypassPermissions',
@@ -423,6 +424,18 @@ async function runQuery(
             NANOCLAW_IS_MAIN: containerInput.isMain ? '1' : '0',
           },
         },
+        ...(containerInput.isMain
+          ? {
+              notebooklm: {
+                command: 'node',
+                args: [path.join(path.dirname(fileURLToPath(import.meta.url)), 'notebooklm-mcp-stdio.js')],
+                env: {
+                  NOTEBOOKLM_PORT: process.env.NOTEBOOKLM_PORT || '11435',
+                  NOTEBOOKLM_HOST: process.env.NOTEBOOKLM_HOST || 'host.docker.internal',
+                },
+              },
+            }
+          : {}),
       },
       hooks: {
         PreCompact: [{ hooks: [createPreCompactHook(containerInput.assistantName)] }],
