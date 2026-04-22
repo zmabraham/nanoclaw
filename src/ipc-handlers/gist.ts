@@ -22,7 +22,10 @@ function writeIpcResponse(
   // Sanitize requestId to prevent path traversal
   const safeId = path.basename(requestId);
   if (!safeId || safeId !== requestId) {
-    logger.warn({ sourceGroup, requestId }, 'Rejected IPC response write due to unsafe requestId');
+    logger.warn(
+      { sourceGroup, requestId },
+      'Rejected IPC response write due to unsafe requestId',
+    );
     return;
   }
 
@@ -69,7 +72,11 @@ const gistCreate: IpcHandler = async (data, _deps, context) => {
   const isPublic = data.public === true;
 
   if (!files || Object.keys(files).length === 0) {
-    errorResponse(context.sourceGroup, requestId, 'Missing or empty "files" field');
+    errorResponse(
+      context.sourceGroup,
+      requestId,
+      'Missing or empty "files" field',
+    );
     return;
   }
 
@@ -80,11 +87,19 @@ const gistCreate: IpcHandler = async (data, _deps, context) => {
     for (const [name, content] of Object.entries(files)) {
       const safeName = path.basename(name);
       if (!isSafeName(safeName)) {
-        errorResponse(context.sourceGroup, requestId, `Invalid filename: ${name}`);
+        errorResponse(
+          context.sourceGroup,
+          requestId,
+          `Invalid filename: ${name}`,
+        );
         return;
       }
       if (seenNames.has(safeName)) {
-        errorResponse(context.sourceGroup, requestId, `Duplicate filename after path resolution: ${safeName}`);
+        errorResponse(
+          context.sourceGroup,
+          requestId,
+          `Duplicate filename after path resolution: ${safeName}`,
+        );
         return;
       }
       seenNames.add(safeName);
@@ -104,7 +119,10 @@ const gistCreate: IpcHandler = async (data, _deps, context) => {
     respond(context.sourceGroup, requestId, { status: 'ok', url });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    logger.error({ err, sourceGroup: context.sourceGroup }, 'gist_create failed');
+    logger.error(
+      { err, sourceGroup: context.sourceGroup },
+      'gist_create failed',
+    );
     errorResponse(context.sourceGroup, requestId, msg);
   } finally {
     fs.rmSync(tmpDir, { recursive: true, force: true });
@@ -116,20 +134,36 @@ const gistView: IpcHandler = async (data, _deps, context) => {
   const gistId = data.gistId as string | undefined;
 
   if (!gistId || !isValidGistId(gistId)) {
-    errorResponse(context.sourceGroup, requestId, 'Missing or invalid "gistId"');
+    errorResponse(
+      context.sourceGroup,
+      requestId,
+      'Missing or invalid "gistId"',
+    );
     return;
   }
 
   try {
     // gh gist view has no --json flag; use the REST API for structured output
-    const { stdout } = await execFileAsync('gh', [
-      'api', `/gists/${gistId}`,
-    ], { timeout: GH_TIMEOUT });
+    const { stdout } = await execFileAsync('gh', ['api', `/gists/${gistId}`], {
+      timeout: GH_TIMEOUT,
+    });
     const gist = JSON.parse(stdout);
-    const files: Record<string, { content: string; size: number; raw_url: string; truncated?: boolean }> = {};
-    for (const [name, meta] of Object.entries(gist.files as Record<string, any>)) {
-      const file: { content: string; size: number; raw_url: string; truncated?: boolean } = {
-        content: meta.content, size: meta.size, raw_url: meta.raw_url,
+    const files: Record<
+      string,
+      { content: string; size: number; raw_url: string; truncated?: boolean }
+    > = {};
+    for (const [name, meta] of Object.entries(
+      gist.files as Record<string, any>,
+    )) {
+      const file: {
+        content: string;
+        size: number;
+        raw_url: string;
+        truncated?: boolean;
+      } = {
+        content: meta.content,
+        size: meta.size,
+        raw_url: meta.raw_url,
       };
       if (meta.truncated) file.truncated = true;
       files[name] = file;
@@ -156,12 +190,20 @@ const gistEdit: IpcHandler = async (data, _deps, context) => {
   const description = data.description as string | undefined;
 
   if (!gistId || !isValidGistId(gistId)) {
-    errorResponse(context.sourceGroup, requestId, 'Missing or invalid "gistId"');
+    errorResponse(
+      context.sourceGroup,
+      requestId,
+      'Missing or invalid "gistId"',
+    );
     return;
   }
   const fileEntries = files ? Object.entries(files) : [];
   if (fileEntries.length === 0 && !description) {
-    errorResponse(context.sourceGroup, requestId, 'Nothing to edit: provide "files" or "description"');
+    errorResponse(
+      context.sourceGroup,
+      requestId,
+      'Nothing to edit: provide "files" or "description"',
+    );
     return;
   }
 
@@ -169,7 +211,11 @@ const gistEdit: IpcHandler = async (data, _deps, context) => {
   for (const [name] of fileEntries) {
     const safeName = path.basename(name);
     if (!isSafeName(safeName)) {
-      errorResponse(context.sourceGroup, requestId, `Invalid filename: ${name}`);
+      errorResponse(
+        context.sourceGroup,
+        requestId,
+        `Invalid filename: ${name}`,
+      );
       return;
     }
   }
@@ -189,9 +235,11 @@ const gistEdit: IpcHandler = async (data, _deps, context) => {
   const tmpFile = path.join(os.tmpdir(), `gist-edit-${Date.now()}.json`);
   try {
     fs.writeFileSync(tmpFile, JSON.stringify(payload));
-    await execFileAsync('gh', [
-      'api', '--method=PATCH', `/gists/${gistId}`, '--input', tmpFile,
-    ], { timeout: GH_TIMEOUT });
+    await execFileAsync(
+      'gh',
+      ['api', '--method=PATCH', `/gists/${gistId}`, '--input', tmpFile],
+      { timeout: GH_TIMEOUT },
+    );
 
     logger.info({ sourceGroup: context.sourceGroup, gistId }, 'Gist edited');
     respond(context.sourceGroup, requestId, { status: 'ok' });
@@ -209,22 +257,35 @@ const gistDelete: IpcHandler = async (data, _deps, context) => {
   const gistId = data.gistId as string | undefined;
 
   if (!context.isMain) {
-    errorResponse(context.sourceGroup, requestId, 'gist_delete is restricted to the main group. Use intercom to ask main to delete it.');
+    errorResponse(
+      context.sourceGroup,
+      requestId,
+      'gist_delete is restricted to the main group. Use intercom to ask main to delete it.',
+    );
     return;
   }
 
   if (!gistId || !isValidGistId(gistId)) {
-    errorResponse(context.sourceGroup, requestId, 'Missing or invalid "gistId"');
+    errorResponse(
+      context.sourceGroup,
+      requestId,
+      'Missing or invalid "gistId"',
+    );
     return;
   }
 
   try {
-    await execFileAsync('gh', ['gist', 'delete', gistId, '--yes'], { timeout: GH_TIMEOUT });
+    await execFileAsync('gh', ['gist', 'delete', gistId, '--yes'], {
+      timeout: GH_TIMEOUT,
+    });
     logger.info({ sourceGroup: context.sourceGroup, gistId }, 'Gist deleted');
     respond(context.sourceGroup, requestId, { status: 'ok' });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    logger.error({ err, sourceGroup: context.sourceGroup }, 'gist_delete failed');
+    logger.error(
+      { err, sourceGroup: context.sourceGroup },
+      'gist_delete failed',
+    );
     errorResponse(context.sourceGroup, requestId, msg);
   }
 };
@@ -235,7 +296,11 @@ const gistClone: IpcHandler = async (data, _deps, context) => {
   const targetDir = data.targetDir as string | undefined;
 
   if (!gistId || !isValidGistId(gistId)) {
-    errorResponse(context.sourceGroup, requestId, 'Missing or invalid "gistId"');
+    errorResponse(
+      context.sourceGroup,
+      requestId,
+      'Missing or invalid "gistId"',
+    );
     return;
   }
 
@@ -243,7 +308,11 @@ const gistClone: IpcHandler = async (data, _deps, context) => {
     const groupDir = resolveGroupFolderPath(context.sourceGroup);
     const cloneName = targetDir ? path.basename(targetDir) : gistId;
     if (!isSafeName(cloneName)) {
-      errorResponse(context.sourceGroup, requestId, 'Invalid target directory name');
+      errorResponse(
+        context.sourceGroup,
+        requestId,
+        'Invalid target directory name',
+      );
       return;
     }
     const args = ['gist', 'clone', gistId, cloneName];
@@ -252,29 +321,47 @@ const gistClone: IpcHandler = async (data, _deps, context) => {
 
     const containerPath = `/workspace/group/${cloneName}`;
 
-    logger.info({ sourceGroup: context.sourceGroup, gistId, containerPath }, 'Gist cloned');
-    respond(context.sourceGroup, requestId, { status: 'ok', path: containerPath });
+    logger.info(
+      { sourceGroup: context.sourceGroup, gistId, containerPath },
+      'Gist cloned',
+    );
+    respond(context.sourceGroup, requestId, {
+      status: 'ok',
+      path: containerPath,
+    });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    logger.error({ err, sourceGroup: context.sourceGroup }, 'gist_clone failed');
+    logger.error(
+      { err, sourceGroup: context.sourceGroup },
+      'gist_clone failed',
+    );
     errorResponse(context.sourceGroup, requestId, msg);
   }
 };
 
 const gistList: IpcHandler = async (data, _deps, context) => {
   const requestId = data.requestId as string | undefined;
-  const rawLimit = typeof data.limit === 'number' && Number.isFinite(data.limit) ? data.limit : 10;
+  const rawLimit =
+    typeof data.limit === 'number' && Number.isFinite(data.limit)
+      ? data.limit
+      : 10;
   const limit = Math.max(1, Math.min(rawLimit, 100));
 
   try {
-    const { stdout } = await execFileAsync('gh', [
-      'gist', 'list', '--limit', String(limit),
-    ], { timeout: GH_TIMEOUT });
+    const { stdout } = await execFileAsync(
+      'gh',
+      ['gist', 'list', '--limit', String(limit)],
+      { timeout: GH_TIMEOUT },
+    );
     // gh gist list outputs tab-separated: ID, Description, Files, Visibility, Updated
-    const gists = stdout.trim().split('\n').filter(Boolean).map((line) => {
-      const [id, description, files, visibility, updated] = line.split('\t');
-      return { id, description, files, visibility, updated };
-    });
+    const gists = stdout
+      .trim()
+      .split('\n')
+      .filter(Boolean)
+      .map((line) => {
+        const [id, description, files, visibility, updated] = line.split('\t');
+        return { id, description, files, visibility, updated };
+      });
     respond(context.sourceGroup, requestId, { status: 'ok', gists });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);

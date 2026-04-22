@@ -250,7 +250,10 @@ async function ensureDaemon(): Promise<void> {
     });
 
     proc.stderr!.on('data', (data: Buffer) => {
-      logger.info({ stderr: data.toString().trim() }, 'google-assistant-daemon');
+      logger.info(
+        { stderr: data.toString().trim() },
+        'google-assistant-daemon',
+      );
     });
 
     proc.on('error', (err) => {
