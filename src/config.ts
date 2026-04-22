@@ -152,11 +152,13 @@ export const MEDIA_MAX_FILES = toNonNegativeInt(
   500,
 );
 export const MEDIA_REFERENCE_FLOOR_HOURS = toNonNegativeInt(
-  process.env.MEDIA_REFERENCE_FLOOR_HOURS || envConfig.MEDIA_REFERENCE_FLOOR_HOURS,
+  process.env.MEDIA_REFERENCE_FLOOR_HOURS ||
+    envConfig.MEDIA_REFERENCE_FLOOR_HOURS,
   24,
 );
 export const MEDIA_PIPELINE_MAX_CONCURRENCY = toPositiveInt(
-  process.env.MEDIA_PIPELINE_MAX_CONCURRENCY || envConfig.MEDIA_PIPELINE_MAX_CONCURRENCY,
+  process.env.MEDIA_PIPELINE_MAX_CONCURRENCY ||
+    envConfig.MEDIA_PIPELINE_MAX_CONCURRENCY,
   5,
 );
 export const LATE_FINALIZE_MAX_RETRIES = toNonNegativeInt(
@@ -168,6 +170,7 @@ export const LATE_FINALIZE_BACKOFF_MS = toNonNegativeInt(
   500,
 );
 export const LATE_FINALIZE_EXHAUST_COOLDOWN_MS = toNonNegativeInt(
-  process.env.LATE_FINALIZE_EXHAUST_COOLDOWN_MS || envConfig.LATE_FINALIZE_EXHAUST_COOLDOWN_MS,
+  process.env.LATE_FINALIZE_EXHAUST_COOLDOWN_MS ||
+    envConfig.LATE_FINALIZE_EXHAUST_COOLDOWN_MS,
   30_000,
 );

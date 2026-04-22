@@ -101,8 +101,18 @@ describe('parseMediaReferences — aggregate-byte cap', () => {
     // Result must be sorted ascending (oldest first).
     for (let i = 1; i < result.length; i++) {
       // relativePaths encode the file index; compare directly on the returned paths.
-      const prevIndex = parseInt(result[i - 1].relativePath.replace('attachments/sorted-', '').replace('.bin', ''), 10);
-      const currIndex = parseInt(result[i].relativePath.replace('attachments/sorted-', '').replace('.bin', ''), 10);
+      const prevIndex = parseInt(
+        result[i - 1].relativePath
+          .replace('attachments/sorted-', '')
+          .replace('.bin', ''),
+        10,
+      );
+      const currIndex = parseInt(
+        result[i].relativePath
+          .replace('attachments/sorted-', '')
+          .replace('.bin', ''),
+        10,
+      );
       expect(prevIndex).toBeLessThan(currIndex);
     }
   });
@@ -245,7 +255,10 @@ describe('parseMediaReferences — aggregate-byte cap', () => {
 
     // The walk is newest-first so the 3 highest-indexed (newest) rows are kept.
     const keptIndexes = result.map((r) =>
-      parseInt(r.relativePath.replace('attachments/order-', '').replace('.bin', ''), 10),
+      parseInt(
+        r.relativePath.replace('attachments/order-', '').replace('.bin', ''),
+        10,
+      ),
     );
 
     // All kept indexes must be among the newest ones (indices 7, 8, 9 for ROW_COUNT=10, 3 kept).

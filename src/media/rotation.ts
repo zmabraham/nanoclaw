@@ -1,10 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { logger } from '../logger.js';
-import {
-  MEDIA_MAX_FILES,
-  MEDIA_RETAIN_FILES,
-} from '../config.js';
+import { MEDIA_MAX_FILES, MEDIA_RETAIN_FILES } from '../config.js';
 
 export interface RotateOpts {
   projectRoot?: string;

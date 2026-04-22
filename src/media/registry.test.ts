@@ -6,14 +6,27 @@ import {
   FALLBACK_PRIORITY,
   MIN_SPECIALIZED_PRIORITY,
 } from './registry.js';
-import type { MediaHandler, MediaRef, ProcessedMedia, HandlerContext } from './types.js';
+import type {
+  MediaHandler,
+  MediaRef,
+  ProcessedMedia,
+  HandlerContext,
+} from './types.js';
 
-function fakeHandler(name: string, kind: 'voice' | 'image' | 'video' | 'audio' | 'document', priority?: number): MediaHandler {
+function fakeHandler(
+  name: string,
+  kind: 'voice' | 'image' | 'video' | 'audio' | 'document',
+  priority?: number,
+): MediaHandler {
   return {
     name,
     priority,
     matches: (ref: MediaRef) => ref.kind === kind,
-    async process(_r: MediaRef, _c: HandlerContext, _s: AbortSignal): Promise<ProcessedMedia> {
+    async process(
+      _r: MediaRef,
+      _c: HandlerContext,
+      _s: AbortSignal,
+    ): Promise<ProcessedMedia> {
       return { textRepresentation: name, handlerName: name, durationMs: 0 };
     },
   };
@@ -30,20 +43,22 @@ describe('media registry', () => {
 
   it('throws on (kind, priority) collision between two specialized handlers', () => {
     registerMediaHandler(fakeHandler('vt', 'voice', 100));
-    expect(() => registerMediaHandler(fakeHandler('vt2', 'voice', 100))).toThrow(
-      /vt.*vt2|vt2.*vt/,
-    );
+    expect(() =>
+      registerMediaHandler(fakeHandler('vt2', 'voice', 100)),
+    ).toThrow(/vt.*vt2|vt2.*vt/);
   });
 
   it('allows same priority across different kinds', () => {
     registerMediaHandler(fakeHandler('vt', 'voice', 100));
-    expect(() => registerMediaHandler(fakeHandler('img', 'image', 100))).not.toThrow();
+    expect(() =>
+      registerMediaHandler(fakeHandler('img', 'image', 100)),
+    ).not.toThrow();
   });
 
   it('rejects specialized handler at FALLBACK_PRIORITY (0)', () => {
-    expect(() => registerMediaHandler(fakeHandler('x', 'image', FALLBACK_PRIORITY))).toThrow(
-      /priority must be >= 1/i,
-    );
+    expect(() =>
+      registerMediaHandler(fakeHandler('x', 'image', FALLBACK_PRIORITY)),
+    ).toThrow(/priority must be >= 1/i);
   });
 
   it('allows fallback-module handler explicitly declared at priority 0', () => {

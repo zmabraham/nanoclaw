@@ -2,7 +2,10 @@ import fs from 'fs';
 import path from 'path';
 import { logger } from '../logger.js';
 import { MEDIA_MAX_AGGREGATE_BYTES } from '../config.js';
-import type { MediaAttachmentRef, ProcessedAttachmentSummary } from './types.js';
+import type {
+  MediaAttachmentRef,
+  ProcessedAttachmentSummary,
+} from './types.js';
 
 interface MessageRowWithAttachments {
   id: string;
@@ -34,7 +37,9 @@ export function parseMediaReferences(
   const base = path.resolve(projectRoot, 'groups', groupFolder, 'attachments');
   // Reverse-timestamp walk: newest first, so the cap keeps the most-recent
   // refs if the total would exceed MEDIA_MAX_AGGREGATE_BYTES.
-  const descending = [...rows].sort((a, b) => b.timestamp.localeCompare(a.timestamp));
+  const descending = [...rows].sort((a, b) =>
+    b.timestamp.localeCompare(a.timestamp),
+  );
   const kept: Array<{ ref: MediaAttachmentRef; timestamp: string }> = [];
   let cumulativeBytes = 0;
   let skippedForCap = 0;
@@ -48,29 +53,46 @@ export function parseMediaReferences(
       if (!entry.workspacePath) continue;
       const wp = entry.workspacePath;
       if (!wp.startsWith('attachments/')) {
-        logger.warn({ row: row.id, workspacePath: wp }, 'parseMediaReferences: reject — not under attachments/');
+        logger.warn(
+          { row: row.id, workspacePath: wp },
+          'parseMediaReferences: reject — not under attachments/',
+        );
         continue;
       }
       if (wp.split('/').includes('..')) {
-        logger.warn({ row: row.id, workspacePath: wp }, 'parseMediaReferences: reject — ".." segment');
+        logger.warn(
+          { row: row.id, workspacePath: wp },
+          'parseMediaReferences: reject — ".." segment',
+        );
         continue;
       }
       const rel = path.relative('attachments', wp);
       const resolved = path.resolve(base, rel);
       if (resolved !== base && !resolved.startsWith(base + path.sep)) {
-        logger.warn({ row: row.id, workspacePath: wp, resolved }, 'parseMediaReferences: reject — escapes base');
+        logger.warn(
+          { row: row.id, workspacePath: wp, resolved },
+          'parseMediaReferences: reject — escapes base',
+        );
         continue;
       }
       if (!fs.existsSync(resolved)) {
-        logger.warn({ row: row.id, workspacePath: wp }, 'parseMediaReferences: attachment missing on disk, skipping');
+        logger.warn(
+          { row: row.id, workspacePath: wp },
+          'parseMediaReferences: attachment missing on disk, skipping',
+        );
         continue;
       }
       // Aggregate-byte cap. sizeBytes is advisory; fall back to statSync if missing.
-      let bytes = typeof entry.sizeBytes === 'number' && entry.sizeBytes > 0
-        ? entry.sizeBytes
-        : 0;
+      let bytes =
+        typeof entry.sizeBytes === 'number' && entry.sizeBytes > 0
+          ? entry.sizeBytes
+          : 0;
       if (!bytes) {
-        try { bytes = fs.statSync(resolved).size; } catch { bytes = 0; }
+        try {
+          bytes = fs.statSync(resolved).size;
+        } catch {
+          bytes = 0;
+        }
       }
       if (cumulativeBytes + bytes > MEDIA_MAX_AGGREGATE_BYTES) {
         // Pessimistic upper bound: unvalidated entry count from this row onward.
@@ -82,12 +104,18 @@ export function parseMediaReferences(
         break capWalk;
       }
       cumulativeBytes += bytes;
-      kept.push({ ref: { relativePath: wp, mediaType: entry.mimetype }, timestamp: row.timestamp });
+      kept.push({
+        ref: { relativePath: wp, mediaType: entry.mimetype },
+        timestamp: row.timestamp,
+      });
     }
   }
 
   if (skippedForCap > 0) {
-    logger.info({ skipped: skippedForCap, cap: MEDIA_MAX_AGGREGATE_BYTES }, 'mediaAttachments aggregate cap reached; N older refs skipped');
+    logger.info(
+      { skipped: skippedForCap, cap: MEDIA_MAX_AGGREGATE_BYTES },
+      'mediaAttachments aggregate cap reached; N older refs skipped',
+    );
   }
 
   // Re-sort ascending (oldest → newest) for stable prompt assembly order.

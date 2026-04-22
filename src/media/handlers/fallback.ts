@@ -1,5 +1,10 @@
 import { extension } from 'mime-types';
-import type { HandlerContext, MediaHandler, MediaRef, ProcessedMedia } from '../types.js';
+import type {
+  HandlerContext,
+  MediaHandler,
+  MediaRef,
+  ProcessedMedia,
+} from '../types.js';
 
 const PREFIX: Record<'voice' | 'video' | 'audio', string> = {
   voice: 'voice',
@@ -23,7 +28,11 @@ export const fallbackHandler: MediaHandler = {
   matches(ref: MediaRef): boolean {
     return ref.kind === 'video' || ref.kind === 'audio' || ref.kind === 'voice';
   },
-  async process(ref: MediaRef, _ctx: HandlerContext, _signal: AbortSignal): Promise<ProcessedMedia> {
+  async process(
+    ref: MediaRef,
+    _ctx: HandlerContext,
+    _signal: AbortSignal,
+  ): Promise<ProcessedMedia> {
     const t0 = Date.now();
     const kind = ref.kind as 'voice' | 'video' | 'audio';
     const ext = extension(ref.mimetype);

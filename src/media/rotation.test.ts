@@ -30,13 +30,29 @@ describe('rotateAttachments', () => {
 
   it('does nothing below hysteresis threshold (120)', () => {
     makeFiles(100);
-    rotateAttachments({ projectRoot: tmp, groupFolder: 'main', retainTarget: 100, hysteresisTop: 120, maxFiles: 500, referenceFloorMs: 0, referencedPaths: new Set() });
+    rotateAttachments({
+      projectRoot: tmp,
+      groupFolder: 'main',
+      retainTarget: 100,
+      hysteresisTop: 120,
+      maxFiles: 500,
+      referenceFloorMs: 0,
+      referencedPaths: new Set(),
+    });
     expect(fs.readdirSync(dir).length).toBe(100);
   });
 
   it('prunes to retainTarget when above hysteresisTop', () => {
     makeFiles(130);
-    rotateAttachments({ projectRoot: tmp, groupFolder: 'main', retainTarget: 100, hysteresisTop: 120, maxFiles: 500, referenceFloorMs: 0, referencedPaths: new Set() });
+    rotateAttachments({
+      projectRoot: tmp,
+      groupFolder: 'main',
+      retainTarget: 100,
+      hysteresisTop: 120,
+      maxFiles: 500,
+      referenceFloorMs: 0,
+      referencedPaths: new Set(),
+    });
     expect(fs.readdirSync(dir).length).toBe(100);
   });
 
@@ -44,8 +60,11 @@ describe('rotateAttachments', () => {
     makeFiles(130);
     const refs = new Set(['attachments/img-0.jpg', 'attachments/img-1.jpg']);
     rotateAttachments({
-      projectRoot: tmp, groupFolder: 'main',
-      retainTarget: 100, hysteresisTop: 120, maxFiles: 500,
+      projectRoot: tmp,
+      groupFolder: 'main',
+      retainTarget: 100,
+      hysteresisTop: 120,
+      maxFiles: 500,
       referenceFloorMs: Date.now() - 10_000,
       referencedPaths: refs,
     });
@@ -56,10 +75,15 @@ describe('rotateAttachments', () => {
 
   it('hard ceiling (maxFiles) overrides the reference floor', () => {
     makeFiles(600);
-    const refs = new Set<string>(Array.from({ length: 600 }, (_, i) => `attachments/img-${i}.jpg`));
+    const refs = new Set<string>(
+      Array.from({ length: 600 }, (_, i) => `attachments/img-${i}.jpg`),
+    );
     rotateAttachments({
-      projectRoot: tmp, groupFolder: 'main',
-      retainTarget: 100, hysteresisTop: 120, maxFiles: 500,
+      projectRoot: tmp,
+      groupFolder: 'main',
+      retainTarget: 100,
+      hysteresisTop: 120,
+      maxFiles: 500,
       referenceFloorMs: Date.now() - 10_000,
       referencedPaths: refs,
     });

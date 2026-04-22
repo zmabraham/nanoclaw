@@ -1,9 +1,6 @@
 import fs from 'fs';
 import path from 'path';
-import {
-  MEDIA_MAX_BYTES,
-  MEDIA_PIPELINE_MAX_CONCURRENCY,
-} from '../config.js';
+import { MEDIA_MAX_BYTES, MEDIA_PIPELINE_MAX_CONCURRENCY } from '../config.js';
 import { logger } from '../logger.js';
 import { getMediaHandlers } from './registry.js';
 import { fallbackHandler } from './handlers/fallback.js';
@@ -37,7 +34,9 @@ class Semaphore {
   }
   release(): void {
     if (this.active <= 0) {
-      throw new Error('Semaphore double-release — active counter would go negative');
+      throw new Error(
+        'Semaphore double-release — active counter would go negative',
+      );
     }
     this.active--;
     const next = this.queue.shift();
@@ -47,12 +46,18 @@ class Semaphore {
 
 function kindLabel(kind: MediaRef['kind']): string {
   switch (kind) {
-    case 'voice': return 'Voice Message';
-    case 'image': return 'Image';
-    case 'document': return 'PDF';
-    case 'video': return 'Video';
-    case 'audio': return 'Audio';
-    default: return 'media';
+    case 'voice':
+      return 'Voice Message';
+    case 'image':
+      return 'Image';
+    case 'document':
+      return 'PDF';
+    case 'video':
+      return 'Video';
+    case 'audio':
+      return 'Audio';
+    default:
+      return 'media';
   }
 }
 
@@ -86,7 +91,9 @@ export class MediaPipeline {
     this.projectRoot = opts.projectRoot ?? process.cwd();
     this.maxBytes = opts.maxBytes ?? MEDIA_MAX_BYTES;
     this.handlerTimeoutMs = opts.handlerTimeoutMs ?? 60_000;
-    this.sem = new Semaphore(opts.maxConcurrency ?? MEDIA_PIPELINE_MAX_CONCURRENCY);
+    this.sem = new Semaphore(
+      opts.maxConcurrency ?? MEDIA_PIPELINE_MAX_CONCURRENCY,
+    );
   }
 
   async process(
@@ -194,7 +201,12 @@ export class MediaPipeline {
     const entries = await Promise.all(entryPromises);
 
     // Single-writer filesystem: pipeline persists workspaceFile bytes
-    const attachDir = path.join(this.projectRoot, 'groups', groupFolder, 'attachments');
+    const attachDir = path.join(
+      this.projectRoot,
+      'groups',
+      groupFolder,
+      'attachments',
+    );
     fs.mkdirSync(attachDir, { recursive: true });
     const summaries: ProcessedAttachmentSummary[] = [];
     for (let i = 0; i < entries.length; i++) {
@@ -218,19 +230,27 @@ export class MediaPipeline {
           );
           writeFailed = true;
           entry.textRepresentation = `[${ref.kind} - error]`;
-          entry.error = (entry.error ? entry.error + '; ' : '') + `workspace-path-escape`;
+          entry.error =
+            (entry.error ? entry.error + '; ' : '') + `workspace-path-escape`;
         }
         if (!writeFailed) {
           try {
             // Use exclusive create (flag 'wx') so a duplicate relativePath from a
             // concurrent handler does not silently overwrite the earlier file.
-            await fs.promises.writeFile(abs, entry.workspaceFile.bytes, { flag: 'wx' });
+            await fs.promises.writeFile(abs, entry.workspaceFile.bytes, {
+              flag: 'wx',
+            });
           } catch (err) {
             writeFailed = true;
             const writeErr = err instanceof Error ? err.message : String(err);
-            logger.warn({ err, path: abs }, 'pipeline: workspaceFile write failed');
+            logger.warn(
+              { err, path: abs },
+              'pipeline: workspaceFile write failed',
+            );
             entry.textRepresentation = `[${ref.kind} - write failed]`;
-            entry.error = (entry.error ? entry.error + '; ' : '') + `workspace-write-failed: ${writeErr}`;
+            entry.error =
+              (entry.error ? entry.error + '; ' : '') +
+              `workspace-write-failed: ${writeErr}`;
           }
         }
         summaries.push({
@@ -244,7 +264,7 @@ export class MediaPipeline {
           // transcoded file (e.g. "image/png" for a JPEG) drops the block.
           mimetype: writeFailed
             ? ref.mimetype
-            : entry.workspaceFile.outputMimetype ?? ref.mimetype,
+            : (entry.workspaceFile.outputMimetype ?? ref.mimetype),
           sizeBytes: entry.workspaceFile.bytes.length,
           error: entry.error,
         });
@@ -259,7 +279,10 @@ export class MediaPipeline {
       // Size-cap rejections are NOT summarized
     }
 
-    const joined = entries.map((e) => e.textRepresentation.trim()).filter(Boolean).join(' ');
+    const joined = entries
+      .map((e) => e.textRepresentation.trim())
+      .filter(Boolean)
+      .join(' ');
     const aggregatedContent = joined || '[Media]';
 
     return {
