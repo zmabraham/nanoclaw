@@ -11,6 +11,7 @@ import {
   MAX_MESSAGES_PER_PROMPT,
   POLL_INTERVAL,
   TIMEZONE,
+  TRIGGER_PATTERN,
 } from './config.js';
 import { startCredentialProxy } from './credential-proxy.js';
 import './channels/index.js';
@@ -30,6 +31,7 @@ import {
   PROXY_BIND_HOST,
 } from './container-runtime.js';
 import {
+  deleteRegisteredGroup,
   getAllChats,
   getAllRegisteredGroups,
   getAllSessions,
@@ -49,6 +51,7 @@ import {
 } from './db.js';
 import { GroupQueue } from './group-queue.js';
 import { resolveGroupFolderPath } from './group-folder.js';
+import './ipc-handlers/group-lifecycle.js';
 import { startIpcWatcher } from './ipc.js';
 import { findChannel, formatMessages, formatOutbound } from './router.js';
 import { ChannelType } from './text-styles.js';
@@ -73,6 +76,23 @@ import { startSchedulerLoop } from './task-scheduler.js';
 import { Channel, NewMessage, RegisteredGroup } from './types.js';
 import { StatusTracker } from './status-tracker.js';
 import { logger } from './logger.js';
+import {
+  onGuardLifted,
+  registerProcessingGuard,
+  runChannelsReadyHooks,
+  runShutdownHooks,
+  runStartupHooks,
+  shouldProcessMessages,
+  runGuardLiftedHooks,
+} from './lifecycle.js';
+import {
+  emitAgentStarting,
+  emitAgentOutput,
+  emitAgentSuccess,
+  emitAgentError,
+  emitMessagePiped,
+} from './message-events.js';
+import { CursorManager } from './cursor-manager.js';
 
 // Re-export for backwards compatibility during refactor
 export { escapeXml, formatMessages } from './router.js';
@@ -80,10 +100,7 @@ export { escapeXml, formatMessages } from './router.js';
 let lastTimestamp = '';
 let sessions: Record<string, string> = {};
 let registeredGroups: Record<string, RegisteredGroup> = {};
-let lastAgentTimestamp: Record<string, string> = {};
-// Tracks cursor value before messages were piped to an active container.
-// Used to roll back if the container dies after piping.
-let cursorBeforePipe: Record<string, string> = {};
+const agentCursors = new CursorManager();
 let messageLoopRunning = false;
 
 const channels: Channel[] = [];
@@ -94,17 +111,17 @@ function loadState(): void {
   lastTimestamp = getRouterState('last_timestamp') || '';
   const agentTs = getRouterState('last_agent_timestamp');
   try {
-    lastAgentTimestamp = agentTs ? JSON.parse(agentTs) : {};
+    agentCursors.loadAll(agentTs ? JSON.parse(agentTs) : {});
   } catch {
     logger.warn('Corrupted last_agent_timestamp in DB, resetting');
-    lastAgentTimestamp = {};
+    agentCursors.loadAll({});
   }
   const pipeCursor = getRouterState('cursor_before_pipe');
   try {
-    cursorBeforePipe = pipeCursor ? JSON.parse(pipeCursor) : {};
+    agentCursors.loadSavedAll(pipeCursor ? JSON.parse(pipeCursor) : {});
   } catch {
     logger.warn('Corrupted cursor_before_pipe in DB, resetting');
-    cursorBeforePipe = {};
+    agentCursors.loadSavedAll({});
   }
   sessions = getAllSessions();
   registeredGroups = getAllRegisteredGroups();
@@ -114,31 +131,13 @@ function loadState(): void {
   );
 }
 
-/**
- * Return the message cursor for a group, recovering from the last bot reply
- * if lastAgentTimestamp is missing (new group, corrupted state, restart).
- */
-function getOrRecoverCursor(chatJid: string): string {
-  const existing = lastAgentTimestamp[chatJid];
-  if (existing) return existing;
-
-  const botTs = getLastBotMessageTimestamp(chatJid, ASSISTANT_NAME);
-  if (botTs) {
-    logger.info(
-      { chatJid, recoveredFrom: botTs },
-      'Recovered message cursor from last bot reply',
-    );
-    lastAgentTimestamp[chatJid] = botTs;
-    saveState();
-    return botTs;
-  }
-  return '';
-}
-
 function saveState(): void {
   setRouterState('last_timestamp', lastTimestamp);
-  setRouterState('last_agent_timestamp', JSON.stringify(lastAgentTimestamp));
-  setRouterState('cursor_before_pipe', JSON.stringify(cursorBeforePipe));
+  setRouterState('last_agent_timestamp', JSON.stringify(agentCursors.getAll()));
+  setRouterState(
+    'cursor_before_pipe',
+    JSON.stringify(agentCursors.getSavedAll()),
+  );
 }
 
 function registerGroup(jid: string, group: RegisteredGroup): void {
@@ -226,11 +225,11 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
 
   const isMainGroup = group.isMain === true;
 
+  const sinceTimestamp = agentCursors.get(chatJid);
   const missedMessages = getMessagesSince(
     chatJid,
-    getOrRecoverCursor(chatJid),
+    sinceTimestamp,
     ASSISTANT_NAME,
-    MAX_MESSAGES_PER_PROMPT,
   );
 
   if (missedMessages.length === 0) return true;
@@ -250,7 +249,7 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
         runAgent(group, prompt, chatJid, onOutput),
       closeStdin: () => queue.closeStdin(chatJid),
       advanceCursor: (ts) => {
-        lastAgentTimestamp[chatJid] = ts;
+        agentCursors.advance(chatJid, ts);
         saveState();
       },
       formatMessages,
@@ -274,11 +273,10 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
 
   // For non-main groups, check if trigger is required and present
   if (!isMainGroup && group.requiresTrigger !== false) {
-    const triggerPattern = getTriggerPattern(group.trigger);
     const allowlistCfg = loadSenderAllowlist();
     const hasTrigger = missedMessages.some(
       (m) =>
-        triggerPattern.test(m.content.trim()) &&
+        TRIGGER_PATTERN.test(m.content.trim()) &&
         (m.is_from_me || isTriggerAllowed(chatJid, m.sender, allowlistCfg)),
     );
     if (!hasTrigger) {
@@ -304,10 +302,12 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
   const prompt = formatMessages(missedMessages, TIMEZONE);
 
   // Advance cursor so the piping path in startMessageLoop won't re-fetch
-  // these messages. Save the old cursor so we can roll back on error.
-  const previousCursor = lastAgentTimestamp[chatJid] || '';
-  lastAgentTimestamp[chatJid] =
-    missedMessages[missedMessages.length - 1].timestamp;
+  // these messages. CursorManager saves the old cursor for rollback on error.
+  agentCursors.save(chatJid);
+  agentCursors.advance(
+    chatJid,
+    missedMessages[missedMessages.length - 1].timestamp,
+  );
   saveState();
 
   logger.info(
@@ -329,12 +329,14 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
     }, IDLE_TIMEOUT);
   };
 
+  await emitAgentStarting(chatJid, group);
   await channel.setTyping?.(chatJid, true);
   let hadError = false;
   let outputSentToUser = false;
   let firstOutputSeen = false;
 
   const output = await runAgent(group, prompt, chatJid, async (result) => {
+    await emitAgentOutput(chatJid, result);
     // Streaming output callback — called for each agent result
     if (result.result) {
       if (!firstOutputSeen) {
@@ -360,10 +362,12 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
 
     if (result.status === 'success') {
       statusTracker.markAllDone(chatJid);
+      await emitAgentSuccess(chatJid);
       queue.notifyIdle(chatJid);
     }
 
     if (result.status === 'error') {
+      await emitAgentError(chatJid, result.error || null);
       hadError = true;
     }
   });
@@ -375,9 +379,8 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
     if (outputSentToUser) {
       // Output was sent for the initial batch, so don't roll those back.
       // But if messages were piped AFTER that output, roll back to recover them.
-      if (cursorBeforePipe[chatJid]) {
-        lastAgentTimestamp[chatJid] = cursorBeforePipe[chatJid];
-        delete cursorBeforePipe[chatJid];
+      if (agentCursors.hasSaved(chatJid)) {
+        agentCursors.rollback(chatJid);
         saveState();
         logger.warn(
           { group: group.name },
@@ -394,8 +397,7 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
       return true;
     }
     // No output sent — roll back everything so the full batch is retried
-    lastAgentTimestamp[chatJid] = previousCursor;
-    delete cursorBeforePipe[chatJid];
+    agentCursors.rollback(chatJid);
     saveState();
     logger.warn(
       { group: group.name },
@@ -406,7 +408,7 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
   }
 
   // Success — clear pipe tracking (markAllDone already fired in streaming callback)
-  delete cursorBeforePipe[chatJid];
+  agentCursors.clearSaved(chatJid);
   saveState();
   return true;
 }
@@ -429,7 +431,6 @@ async function runAgent(
       id: t.id,
       groupFolder: t.group_folder,
       prompt: t.prompt,
-      script: t.script || undefined,
       schedule_type: t.schedule_type,
       schedule_value: t.schedule_value,
       status: t.status,
@@ -520,9 +521,22 @@ async function startMessageLoop(): Promise<void> {
   }
   messageLoopRunning = true;
 
-  logger.info(`NanoClaw running (default trigger: ${DEFAULT_TRIGGER})`);
+  logger.info(`NanoClaw running (trigger: @${ASSISTANT_NAME})`);
+
+  let wasGuarded = !shouldProcessMessages();
 
   while (true) {
+    // Lifecycle guard: skip processing when guards are active (e.g. Shabbat mode)
+    if (!shouldProcessMessages()) {
+      wasGuarded = true;
+      await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL));
+      continue;
+    }
+    if (wasGuarded) {
+      await runGuardLiftedHooks();
+      wasGuarded = false;
+    }
+
     try {
       const jids = Object.keys(registeredGroups);
       const { messages, newTimestamp } = getNewMessages(
@@ -597,11 +611,10 @@ async function startMessageLoop(): Promise<void> {
           // Non-trigger messages accumulate in DB and get pulled as
           // context when a trigger eventually arrives.
           if (needsTrigger) {
-            const triggerPattern = getTriggerPattern(group.trigger);
             const allowlistCfg = loadSenderAllowlist();
             const hasTrigger = groupMessages.some(
               (m) =>
-                triggerPattern.test(m.content.trim()) &&
+                TRIGGER_PATTERN.test(m.content.trim()) &&
                 (m.is_from_me ||
                   isTriggerAllowed(chatJid, m.sender, allowlistCfg)),
             );
@@ -615,13 +628,12 @@ async function startMessageLoop(): Promise<void> {
             }
           }
 
-          // Pull all messages since lastAgentTimestamp so non-trigger
+          // Pull all messages since agentCursors so non-trigger
           // context that accumulated between triggers is included.
           const allPending = getMessagesSince(
             chatJid,
-            getOrRecoverCursor(chatJid),
+            agentCursors.get(chatJid),
             ASSISTANT_NAME,
-            MAX_MESSAGES_PER_PROMPT,
           );
           const messagesToSend =
             allPending.length > 0 ? allPending : groupMessages;
@@ -639,12 +651,15 @@ async function startMessageLoop(): Promise<void> {
                 statusTracker.markThinking(msg.id);
               }
             }
+            await emitMessagePiped(chatJid, messagesToSend.length);
             // Save cursor before first pipe so we can roll back if container dies
-            if (!cursorBeforePipe[chatJid]) {
-              cursorBeforePipe[chatJid] = lastAgentTimestamp[chatJid] || '';
+            if (!agentCursors.hasSaved(chatJid)) {
+              agentCursors.save(chatJid);
             }
-            lastAgentTimestamp[chatJid] =
-              messagesToSend[messagesToSend.length - 1].timestamp;
+            agentCursors.advance(
+              chatJid,
+              messagesToSend[messagesToSend.length - 1].timestamp,
+            );
             saveState();
             // Show typing indicator while the container processes the piped message
             channel
@@ -675,7 +690,9 @@ function recoverPendingMessages(): void {
   // IMPORTANT: Only roll back if the container is no longer running — rolling
   // back while the container is alive causes duplicate processing.
   let rolledBack = false;
-  for (const [chatJid, savedCursor] of Object.entries(cursorBeforePipe)) {
+  for (const [chatJid, savedCursor] of Object.entries(
+    agentCursors.getSavedAll(),
+  )) {
     if (queue.isActive(chatJid)) {
       logger.debug(
         { chatJid },
@@ -687,8 +704,7 @@ function recoverPendingMessages(): void {
       { chatJid, rolledBackTo: savedCursor },
       'Recovery: rolling back piped-message cursor',
     );
-    lastAgentTimestamp[chatJid] = savedCursor;
-    delete cursorBeforePipe[chatJid];
+    agentCursors.rollback(chatJid);
     rolledBack = true;
   }
   if (rolledBack) {
@@ -696,12 +712,8 @@ function recoverPendingMessages(): void {
   }
 
   for (const [chatJid, group] of Object.entries(registeredGroups)) {
-    const pending = getMessagesSince(
-      chatJid,
-      getOrRecoverCursor(chatJid),
-      ASSISTANT_NAME,
-      MAX_MESSAGES_PER_PROMPT,
-    );
+    const sinceTimestamp = agentCursors.get(chatJid);
+    const pending = getMessagesSince(chatJid, sinceTimestamp, ASSISTANT_NAME);
     if (pending.length > 0) {
       logger.info(
         { group: group.name, pendingCount: pending.length },
@@ -710,6 +722,15 @@ function recoverPendingMessages(): void {
       queue.enqueueMessageCheck(chatJid);
     }
   }
+}
+
+function unregisterGroup(jid: string): boolean {
+  const deleted = deleteRegisteredGroup(jid);
+  if (deleted) {
+    delete registeredGroups[jid];
+    logger.info({ jid }, 'Group unregistered');
+  }
+  return deleted;
 }
 
 function ensureContainerSystemRunning(): void {
@@ -724,6 +745,8 @@ async function main(): Promise<void> {
   loadState();
   restoreRemoteControl();
 
+  await runStartupHooks();
+
   // Start credential proxy (containers route API calls through this)
   const proxyServer = await startCredentialProxy(
     CREDENTIAL_PROXY_PORT,
@@ -737,6 +760,7 @@ async function main(): Promise<void> {
     await queue.shutdown(10000);
     for (const ch of channels) await ch.disconnect();
     await statusTracker.shutdown();
+    await runShutdownHooks();
     process.exit(0);
   };
   process.on('SIGTERM', () => shutdown('SIGTERM'));
@@ -859,6 +883,7 @@ async function main(): Promise<void> {
     channels.push(channel);
     await channel.connect();
   }
+  await runChannelsReadyHooks(channels);
   if (channels.length === 0) {
     logger.fatal('No channels connected');
     process.exit(1);
@@ -909,6 +934,7 @@ async function main(): Promise<void> {
     },
     registeredGroups: () => registeredGroups,
     registerGroup,
+    unregisterGroup,
     syncGroups: async (force: boolean) => {
       await Promise.all(
         channels
@@ -927,7 +953,6 @@ async function main(): Promise<void> {
         id: t.id,
         groupFolder: t.group_folder,
         prompt: t.prompt,
-        script: t.script || undefined,
         schedule_type: t.schedule_type,
         schedule_value: t.schedule_value,
         status: t.status,

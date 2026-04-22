@@ -9,6 +9,11 @@ import { createTask, deleteTask, getTaskById, updateTask } from './db.js';
 import { isValidGroupFolder } from './group-folder.js';
 import { logger } from './logger.js';
 import { RegisteredGroup } from './types.js';
+import { getIpcHandler } from './ipc-handlers.js';
+import {
+  writeIpcNotification,
+  writeIpcErrorResponse,
+} from './ipc-self-heal.js';
 
 export interface IpcDeps {
   sendMessage: (jid: string, text: string) => Promise<void>;
@@ -29,6 +34,7 @@ export interface IpcDeps {
   ) => void;
   statusHeartbeat?: () => void;
   recoverPendingMessages?: () => void;
+  unregisterGroup?: (jid: string) => boolean;
   onTasksChanged: () => void;
 }
 
@@ -223,6 +229,7 @@ export async function processTaskIpc(
     groupFolder?: string;
     chatJid?: string;
     targetJid?: string;
+    requestId?: string;
     // For register_group
     jid?: string;
     name?: string;
@@ -517,7 +524,48 @@ export async function processTaskIpc(
       }
       break;
 
-    default:
-      logger.warn({ type: data.type }, 'Unknown IPC task type');
+    default: {
+      const handler = getIpcHandler(data.type);
+      if (handler) {
+        try {
+          await handler(data, deps, { sourceGroup, isMain });
+        } catch (err) {
+          const errorMessage = err instanceof Error ? err.message : String(err);
+          logger.error(
+            { type: data.type, err, sourceGroup },
+            'IPC handler threw an exception',
+          );
+          writeIpcErrorResponse(
+            sourceGroup,
+            data.requestId,
+            'handler_error',
+            data.type,
+            errorMessage,
+          );
+          writeIpcNotification(
+            sourceGroup,
+            'handler_error',
+            data.type,
+            errorMessage,
+          );
+        }
+      } else {
+        const errorMessage = `No handler registered for IPC type "${data.type}"`;
+        logger.warn({ type: data.type }, 'Unknown IPC task type');
+        writeIpcErrorResponse(
+          sourceGroup,
+          data.requestId,
+          'unknown_ipc_type',
+          data.type,
+          errorMessage,
+        );
+        writeIpcNotification(
+          sourceGroup,
+          'unknown_ipc_type',
+          data.type,
+          errorMessage,
+        );
+      }
+    }
   }
 }
