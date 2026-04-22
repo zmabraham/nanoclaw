@@ -54,7 +54,10 @@ export function readonlyMountArgs(
   hostPath: string,
   containerPath: string,
 ): string[] {
-  return ['-v', `${hostPath}:${containerPath}:ro`];
+  return [
+    '--mount',
+    `type=bind,source=${hostPath},target=${containerPath},readonly`,
+  ];
 }
 
 /** Stop a container by name. Uses execFileSync to avoid shell injection. */
@@ -62,24 +65,21 @@ export function stopContainer(name: string): void {
   if (!/^[a-zA-Z0-9][a-zA-Z0-9_.-]*$/.test(name)) {
     throw new Error(`Invalid container name: ${name}`);
   }
-  execSync(`${CONTAINER_RUNTIME_BIN} stop -t 1 ${name}`, { stdio: 'pipe' });
+  execSync(`${CONTAINER_RUNTIME_BIN} stop ${name}`, { stdio: 'pipe' });
 }
 
-/** Ensure the container runtime is running, starting it if needed. */
+/** Ensure the container runtime is running. */
 export function ensureContainerRuntimeRunning(): void {
   try {
-    execSync(`${CONTAINER_RUNTIME_BIN} info`, {
-      stdio: 'pipe',
-      timeout: 10000,
-    });
+    execSync(`${CONTAINER_RUNTIME_BIN} info`, { stdio: 'pipe' });
     logger.debug('Container runtime already running');
   } catch (err) {
-    logger.error({ err }, 'Failed to reach container runtime');
+    logger.error({ err }, 'Container runtime not available');
     console.error(
       '\n╔════════════════════════════════════════════════════════════════╗',
     );
     console.error(
-      '║  FATAL: Container runtime failed to start                      ║',
+      '║  FATAL: Docker daemon is not running                           ║',
     );
     console.error(
       '║                                                                ║',
@@ -91,7 +91,7 @@ export function ensureContainerRuntimeRunning(): void {
       '║  1. Ensure Docker is installed and running                     ║',
     );
     console.error(
-      '║  2. Run: docker info                                           ║',
+      '║  2. Run: sudo systemctl start docker                           ║',
     );
     console.error(
       '║  3. Restart NanoClaw                                           ║',
@@ -99,9 +99,7 @@ export function ensureContainerRuntimeRunning(): void {
     console.error(
       '╚════════════════════════════════════════════════════════════════╝\n',
     );
-    throw new Error('Container runtime is required but failed to start', {
-      cause: err,
-    });
+    throw new Error('Container runtime is required but not available');
   }
 }
 
@@ -109,10 +107,13 @@ export function ensureContainerRuntimeRunning(): void {
 export function cleanupOrphans(): void {
   try {
     const output = execSync(
-      `${CONTAINER_RUNTIME_BIN} ps --filter name=nanoclaw- --format '{{.Names}}'`,
+      `${CONTAINER_RUNTIME_BIN} ps --filter name=nanoclaw- --format {{.Names}}`,
       { stdio: ['pipe', 'pipe', 'pipe'], encoding: 'utf-8' },
     );
-    const orphans = output.trim().split('\n').filter(Boolean);
+    const orphans = output
+      .trim()
+      .split('\n')
+      .filter((n) => n.startsWith('nanoclaw-'));
     for (const name of orphans) {
       try {
         stopContainer(name);
