@@ -567,7 +567,7 @@ class SessionPool:
                     pending = self._pending.get(notebook_url)
                     if pending is None:
                         # We're the leader for this URL's launch.
-                        fut = asyncio.get_event_loop().create_future()
+                        fut = asyncio.get_running_loop().create_future()
                         self._pending[notebook_url] = fut
                         leader = True
                     else:
@@ -1097,7 +1097,6 @@ import asyncio
 import logging
 import os
 import time
-from dataclasses import asdict
 from typing import Any, Awaitable, Callable, Optional
 
 from aiohttp import web
@@ -1236,8 +1235,9 @@ async def handle_ask(request: web.Request) -> web.Response:
         try:
             result = await ask(retry_session.page, question)
         except Exception as exc2:  # noqa: BLE001
-            await pool.release(retry_session)
+            # Evict before release so we never briefly re-cache a broken session.
             await pool.evict(nb_url)
+            await pool.release(retry_session)
             return web.json_response(
                 {"error": f"ask failed after retry: {exc2}", "hint": "check daemon logs"},
                 status=500,
