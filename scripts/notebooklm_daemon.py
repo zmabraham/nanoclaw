@@ -134,9 +134,10 @@ async def handle_ask(request: web.Request) -> web.Response:
         result = await ask(session.page, question)
     except Exception as exc:  # noqa: BLE001
         was_hit = session.hit
-        # Broken page — get it out of the cache either way.
-        await pool.release(session)
+        # Broken page — evict before release so a concurrent acquire on the same
+        # URL never briefly re-caches a session we already know is broken.
         await pool.evict(nb_url)
+        await pool.release(session)
 
         if not was_hit:
             # Initial launch path — spec says no retry; surface immediately.
