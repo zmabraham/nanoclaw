@@ -1,6 +1,6 @@
 {
-  "name": "ipc-handler-registry",
-  "description": "Modular IPC handler registration system with self-heal error reporting",
+  "name": "whatsapp-summary",
+  "description": "3-stage multi-agent pipeline for generating daily and weekly WhatsApp group summaries",
   "tier": 0,
   "dependencies": []
 }
