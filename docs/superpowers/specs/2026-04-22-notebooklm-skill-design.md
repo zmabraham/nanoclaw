@@ -66,6 +66,8 @@ main-group container                      host (always-up)
 - **State lives on host, never in container.** Cookies, library, venv — all in `~/.claude/skills/notebooklm/data/` and `.venv/`. Containers are stateless callers.
 - **One warm-session feature flag.** `NOTEBOOKLM_WARM_SESSIONS=0` falls back to one-shot Chromium per query. Escape hatch if reuse misbehaves.
 - **Daemon is localhost-only.** No authentication, binds `127.0.0.1` — same trust model as the existing `add-ollama-tool` integration.
+- **Container reaches daemon via `host.docker.internal`.** On Linux this requires `--add-host=host.docker.internal:host-gateway` on container launch — already applied by NanoClaw's container runtime for the Ollama integration; we reuse the same hop, no new container-runtime plumbing.
+- **Port is env-driven end-to-end.** The container-side MCP bridge reads `NOTEBOOKLM_PORT` from its environment at start (propagated by the host's container-runner), so if the installer auto-picks a different port due to collision, both sides stay in sync without a rebuild.
 
 ## Components
 
@@ -172,7 +174,7 @@ Registered only when `input.isMain === true`. Other groups see no notebooklm too
 
 ### `notebooklm_ask`
 - **Params:** `{question: string, notebook_id?: string, notebook_url?: string}`
-- **Behavior:** primary query. Requires `notebook_id` OR `notebook_url` (not both required — daemon resolves active notebook if neither provided).
+- **Behavior:** primary query. Requires `notebook_id` OR `notebook_url` (not both required — daemon resolves active notebook if neither provided). **Precedence: if both are provided, `notebook_id` wins** (daemon looks up URL from library).
 - **Returns:** `{answer, citations, notebook, warm_hit}`
 
 ### `notebooklm_list`
@@ -217,7 +219,7 @@ On `ask_on_page` exception during reuse:
 3. Run `ask_on_page` again.
 4. If still fails → surface error to caller.
 
-Exactly one automatic retry per query. No exponential backoff. No queuing.
+Exactly one automatic retry per query. No exponential backoff. No queuing. **Scope of retry:** only failures *during* `ask_on_page` against a reused session trigger the retry. Initial cache-miss Chromium-launch failures surface immediately (no retry) — those indicate environmental problems (patchright install broken, auth expired, host resources exhausted) where a second attempt is unlikely to help.
 
 ## Configuration
 
