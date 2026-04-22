@@ -1,6 +1,6 @@
 {
-  "name": "intercom",
-  "description": "Inter-container communication: outbox/inbox messaging, trust verification, query response, sync sessions, whitelist management",
+  "name": "gist",
+  "description": "Share files with users by creating GitHub Gists and returning URLs",
   "tier": 1,
   "dependencies": ["ipc-handler-registry"]
 }

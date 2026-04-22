@@ -1,0 +1,268 @@
+#!/bin/bash
+# gist — GitHub Gist management via host IPC proxy.
+# Usage: gist <create|view|edit|delete|clone|list> [args...]
+
+set -euo pipefail
+
+IPC_DIR="/workspace/ipc"
+TASKS_DIR="$IPC_DIR/tasks"
+RESPONSES_DIR="$IPC_DIR/responses"
+TIMEOUT=35
+
+gen_id() { echo "gist-$(date +%s%N)-$$"; }
+
+# Write task JSON atomically, poll for response, print result.
+send_request() {
+  local request_id payload
+  request_id=$(gen_id)
+  payload="$1"
+
+  # Inject requestId into the payload
+  payload=$(echo "$payload" | jq --arg id "$request_id" '. + {requestId: $id}')
+
+  local task_file="$TASKS_DIR/${request_id}.json"
+  local tmp_file="${task_file}.tmp"
+  echo "$payload" > "$tmp_file"
+  mv "$tmp_file" "$task_file"
+
+  # Poll for response (each iteration sleeps 0.5s, so max wait = TIMEOUT seconds)
+  local response_file="$RESPONSES_DIR/${request_id}.json"
+  local max_iterations=$(( TIMEOUT * 2 ))
+  local i=0
+  while [[ ! -f "$response_file" ]] && (( i < max_iterations )); do
+    sleep 0.5
+    i=$((i + 1))
+  done
+
+  if [[ ! -f "$response_file" ]]; then
+    echo "Error: request timed out after ${TIMEOUT}s" >&2
+    exit 1
+  fi
+
+  local response
+  response=$(cat "$response_file")
+  rm -f "$response_file"
+
+  local status
+  status=$(echo "$response" | jq -r '.status')
+  if [[ "$status" == "error" ]]; then
+    echo "Error: $(echo "$response" | jq -r '.error')" >&2
+    exit 1
+  fi
+
+  echo "$response"
+}
+
+# --- Subcommands ---
+
+cmd_create() {
+  if [[ $# -eq 0 ]]; then
+    echo "Usage: gist create <file1> [file2...] [--description TEXT] [--public]" >&2
+    exit 1
+  fi
+
+  local -a files=()
+  local description="" is_public="false"
+
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --description|-d) [[ $# -lt 2 ]] && { echo "Error: --description requires a value" >&2; exit 1; }; description="$2"; shift 2 ;;
+      --public) is_public="true"; shift ;;
+      *)
+        if [[ ! -f "$1" ]]; then
+          echo "Error: file not found: $1" >&2
+          exit 1
+        fi
+        files+=("$1")
+        shift
+        ;;
+    esac
+  done
+
+  if [[ ${#files[@]} -eq 0 ]]; then
+    echo "Error: no files specified" >&2
+    exit 1
+  fi
+
+  # Build files JSON object: { "name": "content", ... }
+  local files_json="{}"
+  for f in "${files[@]}"; do
+    local name content
+    name=$(basename "$f")
+    content=$(jq -Rs . < "$f")
+    files_json=$(echo "$files_json" | jq --arg n "$name" --argjson c "$content" '. + {($n): $c}')
+  done
+
+  local payload
+  payload=$(jq -n \
+    --arg type "gist_create" \
+    --argjson files "$files_json" \
+    --arg desc "$description" \
+    --argjson pub "$is_public" \
+    '{type: $type, files: $files, description: $desc, public: $pub}')
+
+  local result
+  result=$(send_request "$payload")
+  echo "$result" | jq -r '.url'
+}
+
+cmd_view() {
+  if [[ $# -eq 0 ]]; then
+    echo "Usage: gist view <gist_id>" >&2
+    exit 1
+  fi
+
+  local payload
+  payload=$(jq -n --arg type "gist_view" --arg id "$1" '{type: $type, gistId: $id}')
+
+  local result
+  result=$(send_request "$payload")
+  echo "$result" | jq 'del(.status)'
+}
+
+cmd_edit() {
+  if [[ $# -lt 2 ]]; then
+    echo "Usage: gist edit <gist_id> <file1> [file2...] [--description TEXT]" >&2
+    exit 1
+  fi
+
+  local gist_id="$1"; shift
+  local -a files=()
+  local description=""
+
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --description|-d) [[ $# -lt 2 ]] && { echo "Error: --description requires a value" >&2; exit 1; }; description="$2"; shift 2 ;;
+      *)
+        if [[ ! -f "$1" ]]; then
+          echo "Error: file not found: $1" >&2
+          exit 1
+        fi
+        files+=("$1")
+        shift
+        ;;
+    esac
+  done
+
+  local files_json="{}"
+  for f in "${files[@]}"; do
+    local name content
+    name=$(basename "$f")
+    content=$(jq -Rs . < "$f")
+    files_json=$(echo "$files_json" | jq --arg n "$name" --argjson c "$content" '. + {($n): $c}')
+  done
+
+  local payload
+  payload=$(jq -n \
+    --arg type "gist_edit" \
+    --arg id "$gist_id" \
+    --argjson files "$files_json" \
+    --arg desc "$description" \
+    '{type: $type, gistId: $id, files: $files, description: $desc}')
+
+  local result
+  result=$(send_request "$payload")
+  echo "Gist $gist_id updated."
+}
+
+cmd_delete() {
+  if [[ $# -eq 0 ]]; then
+    echo "Usage: gist delete <gist_id>" >&2
+    exit 1
+  fi
+
+  local payload
+  payload=$(jq -n --arg type "gist_delete" --arg id "$1" '{type: $type, gistId: $id}')
+
+  send_request "$payload" > /dev/null
+  echo "Gist $1 deleted."
+}
+
+cmd_clone() {
+  if [[ $# -eq 0 ]]; then
+    echo "Usage: gist clone <gist_id> [target_dir]" >&2
+    exit 1
+  fi
+
+  local gist_id="$1"
+  local target_dir="${2:-}"
+
+  local payload
+  payload=$(jq -n \
+    --arg type "gist_clone" \
+    --arg id "$gist_id" \
+    --arg dir "$target_dir" \
+    '{type: $type, gistId: $id, targetDir: $dir}')
+
+  local result
+  result=$(send_request "$payload")
+  echo "$result" | jq -r '.path'
+}
+
+cmd_list() {
+  local limit=10
+  if [[ "${1:-}" == "--limit" && -n "${2:-}" ]]; then
+    if ! [[ "$2" =~ ^[1-9][0-9]*$ ]]; then
+      echo "Error: --limit must be a positive integer" >&2
+      exit 1
+    fi
+    limit="$2"
+  fi
+
+  local payload
+  payload=$(jq -n --arg type "gist_list" --argjson limit "$limit" '{type: $type, limit: $limit}')
+
+  local result
+  result=$(send_request "$payload")
+  echo "$result" | jq -r '.gists[] | [.id, .description, .visibility, .updated] | @tsv'
+}
+
+# --- Dispatcher ---
+
+case "${1:-help}" in
+  create)  shift; cmd_create "$@" ;;
+  view)    shift; cmd_view "$@" ;;
+  edit)    shift; cmd_edit "$@" ;;
+  delete)  shift; cmd_delete "$@" ;;
+  clone)   shift; cmd_clone "$@" ;;
+  list)    shift; cmd_list "$@" ;;
+  help|--help|-h)
+    cat <<'USAGE'
+gist — GitHub Gist management (proxied via host)
+
+Usage: gist <command> [args...]
+
+Commands:
+  create <file1> [file2...] [--description TEXT] [--public]
+      Create a new gist from files. Returns the gist URL.
+
+  view <gist_id>
+      View gist contents and metadata.
+
+  edit <gist_id> <file1> [file2...] [--description TEXT]
+      Update a gist with new or changed files.
+
+  delete <gist_id>
+      Delete a gist.
+
+  clone <gist_id> [target_dir]
+      Download gist files into /workspace/group/<target_dir>.
+
+  list [--limit N]
+      List recent gists (default: 10).
+
+Examples:
+  gist create report.md --description "Weekly report"
+  gist create config.yaml main.py --public
+  gist view abc123def456
+  gist clone abc123def456 my-gist
+  gist edit abc123def456 updated-file.txt
+  gist delete abc123def456
+  gist list --limit 5
+USAGE
+    ;;
+  *)
+    echo "Error: unknown command '$1'. Run 'gist help' for usage." >&2
+    exit 1
+    ;;
+esac

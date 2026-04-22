@@ -59,6 +59,10 @@ COPY agent-runner/ ./
 # Build TypeScript
 RUN npm run build
 
+# Install gist CLI wrapper (IPC proxy to host gh CLI)
+COPY skills/gist/gist /usr/local/bin/gist
+RUN chmod +x /usr/local/bin/gist
+
 # Create workspace directories
 RUN mkdir -p /workspace/group /workspace/global /workspace/extra /workspace/ipc/messages /workspace/ipc/tasks /workspace/ipc/input /workspace/ipc/responses /workspace/sockets
 

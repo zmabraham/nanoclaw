@@ -55,6 +55,7 @@ import './ipc-handlers/group-lifecycle.js';
 import { startIpcWatcher } from './ipc.js';
 // Side-effect imports: register IPC handlers before dispatch
 import './ipc-handlers/whitelist-edit.js';
+import './ipc-handlers/gist.js';
 import { clearPendingInboxInvocations } from './intercom.js';
 import { findChannel, formatMessages, formatOutbound } from './router.js';
 import { ChannelType } from './text-styles.js';
