@@ -33,6 +33,23 @@ import { RegisteredGroup } from './types.js';
 const OUTPUT_START_MARKER = '---NANOCLAW_OUTPUT_START---';
 const OUTPUT_END_MARKER = '---NANOCLAW_OUTPUT_END---';
 
+export function buildContainerEnvArgs(
+  env: Partial<Record<'NOTEBOOKLM_PORT' | 'NOTEBOOKLM_HOST', string>>,
+): string[] {
+  const out: string[] = [];
+  if (env.NOTEBOOKLM_PORT) out.push(`NOTEBOOKLM_PORT=${env.NOTEBOOKLM_PORT}`);
+  if (env.NOTEBOOKLM_HOST) out.push(`NOTEBOOKLM_HOST=${env.NOTEBOOKLM_HOST}`);
+  return out;
+}
+
+export function isNotebooklmLogLine(line: string): boolean {
+  return line.startsWith('[NOTEBOOKLM]');
+}
+
+export function surfaceNotebooklmLog(line: string, write: (msg: string) => void): void {
+  if (isNotebooklmLogLine(line)) write(line);
+}
+
 export interface ContainerInput {
   prompt: string;
   sessionId?: string;
@@ -238,6 +255,14 @@ function buildContainerArgs(
     args.push('-e', 'CLAUDE_CODE_OAUTH_TOKEN=placeholder');
   }
 
+  // Propagate NOTEBOOKLM config so main-group agents can reach the host daemon.
+  for (const kv of buildContainerEnvArgs({
+    NOTEBOOKLM_PORT: process.env.NOTEBOOKLM_PORT,
+    NOTEBOOKLM_HOST: process.env.NOTEBOOKLM_HOST,
+  })) {
+    args.push('-e', kv);
+  }
+
   // Runtime-specific args for host gateway resolution
   args.push(...hostGatewayArgs());
 
@@ -382,7 +407,12 @@ export async function runContainerAgent(
       const chunk = data.toString();
       const lines = chunk.trim().split('\n');
       for (const line of lines) {
-        if (line) logger.debug({ container: group.folder }, line);
+        if (line) {
+          logger.debug({ container: group.folder }, line);
+          surfaceNotebooklmLog(line, (msg) =>
+            logger.info({ group: group.folder, tag: 'notebooklm' }, msg),
+          );
+        }
       }
       // Don't reset timeout on stderr — SDK writes debug logs continuously.
       // Timeout only resets on actual output (OUTPUT_MARKER in stdout).
