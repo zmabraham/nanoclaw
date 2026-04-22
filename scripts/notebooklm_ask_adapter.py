@@ -97,8 +97,8 @@ async def _launch_browser_on_notebook(notebook_url: str) -> tuple[Any, Any, Any]
         # carry a valid session. Auth errors surface later via /health.
         pass
 
-    page = await context.new_page()
     try:
+        page = await context.new_page()
         await page.goto(notebook_url, wait_until="domcontentloaded")
         # Wait for the query-input selector to become visible — the signal that
         # NotebookLM is ready to accept input.
@@ -177,6 +177,10 @@ async def _submit_question_and_extract(page: Any, question: str) -> AskResult:
     stable_count = 0
     answer: str | None = None
 
+    # Per-poll exceptions are swallowed so transient patchright hiccups don't
+    # abort the 2-minute wait. The deadline eventually forces a RuntimeError if
+    # the page truly never stabilizes. If you need to see what's going wrong,
+    # enable DEBUG on the notebooklm-daemon.adapter logger.
     while time.monotonic() < deadline:
         try:
             thinking = await page.query_selector("div.thinking-message")
@@ -211,4 +215,6 @@ async def _submit_question_and_extract(page: Any, question: str) -> AskResult:
     if answer is None:
         raise RuntimeError("Timed out waiting for a stable NotebookLM answer.")
 
+    # NOTE: citations intentionally empty — upstream ask_question.py does not
+    # extract citations. Integration testers (Task 12): do not assert citations.
     return AskResult(answer=answer, citations=[])
