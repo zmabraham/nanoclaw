@@ -188,3 +188,49 @@ async def test_concurrent_miss_same_url_launches_only_once(fake_clock):
     # At least two of the three must have been warm hits (served by the leader's entry)
     assert sum(hits) >= 2
     await pool.shutdown()
+
+
+async def test_gc_skips_in_use_session(fake_clock, fake_launcher):
+    """GC must not close a session whose per-entry lock is currently held."""
+    pool = SessionPool(PoolConfig(max_warm=3, idle_seconds=30), launcher=fake_launcher, clock=fake_clock)
+    r = await pool.acquire("https://x/a")  # holds the per-entry lock
+    browser = r.browser
+    fake_clock.advance(31)  # would normally be stale
+    evicted = await pool.run_gc_once()
+    assert evicted == 0
+    browser.close.assert_not_called()
+    # After release, the next GC run should collect it.
+    await pool.release(r)
+    fake_clock.advance(31)
+    evicted = await pool.run_gc_once()
+    assert evicted == 1
+    browser.close.assert_awaited_once()
+    await pool.shutdown()
+
+
+async def test_evict_of_in_use_session_defers_close_to_release(fake_clock, fake_launcher):
+    """evict() on a locked entry must not close the browser out from under the holder."""
+    pool = SessionPool(PoolConfig(max_warm=3, idle_seconds=9999), launcher=fake_launcher, clock=fake_clock)
+    r = await pool.acquire("https://x/a")  # holds lock
+    browser = r.browser
+    removed = await pool.evict("https://x/a")
+    assert removed is True
+    browser.close.assert_not_called()  # still in use, not closed yet
+    # Next lookup must not reuse it
+    r2 = await pool.acquire("https://x/a")
+    try:
+        assert r2.hit is False
+        assert fake_launcher.calls["n"] == 2
+    finally:
+        await pool.release(r2)
+    # Releasing the evicted session closes it.
+    await pool.release(r)
+    browser.close.assert_awaited_once()
+    await pool.shutdown()
+
+
+async def test_pool_config_rejects_invalid_values():
+    with pytest.raises(ValueError):
+        PoolConfig(max_warm=0)
+    with pytest.raises(ValueError):
+        PoolConfig(idle_seconds=0)

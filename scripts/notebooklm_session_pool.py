@@ -26,6 +26,12 @@ class PoolConfig:
     idle_seconds: float = 90.0
     warm_enabled: bool = True
 
+    def __post_init__(self) -> None:
+        if self.max_warm < 1:
+            raise ValueError("max_warm must be >= 1")
+        if self.idle_seconds <= 0:
+            raise ValueError("idle_seconds must be > 0")
+
 
 @dataclass
 class AcquiredSession:
@@ -176,6 +182,12 @@ class SessionPool:
             entry = self._entries.pop(notebook_url, None)
         if entry is None:
             return False
+        # If the entry is still in use (lock held), the current holder owns the
+        # close when it calls release() — the entry is already removed from the
+        # table so no new lookup will reuse it. Closing here would yank the
+        # browser out from under an in-flight query.
+        if entry.lock.locked():
+            return True
         await self._close_entry(entry)
         return True
 
@@ -183,7 +195,12 @@ class SessionPool:
         cutoff = self._clock() - self._config.idle_seconds
         to_close: list[_Entry] = []
         async with self._table_lock:
-            stale = [url for url, e in self._entries.items() if e.last_used_at < cutoff]
+            # Skip entries whose per-entry lock is currently held — those are
+            # in-flight queries; GC picks them up on the next cycle after release.
+            stale = [
+                url for url, e in self._entries.items()
+                if e.last_used_at < cutoff and not e.lock.locked()
+            ]
             for url in stale:
                 to_close.append(self._entries.pop(url))
         for e in to_close:
