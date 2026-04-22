@@ -5,3 +5,4 @@ skills:
   - container-hardening
   - task-scheduler-fixes
   - group-lifecycle
+  - ipc-handler-registry
