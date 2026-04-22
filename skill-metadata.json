@@ -1,11 +1,6 @@
 {
-  "name": "group-lifecycle",
-  "description": "IPC handler for remote group unregistration, enabling container agents to remove groups via the unregister_group command",
-  "tier": 2,
-  "dependencies": [
-    "lifecycle-hooks"
-  ],
-  "also_requires": [
-    "ipc-handler-registry"
-  ]
+  "name": "ipc-handler-registry",
+  "description": "Modular IPC handler registration system with self-heal error reporting",
+  "tier": 0,
+  "dependencies": []
 }
