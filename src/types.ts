@@ -1,3 +1,5 @@
+import type { MediaRef, ProcessedAttachmentSummary } from './media/types.js';
+
 export interface AdditionalMount {
   hostPath: string; // Absolute path on host (supports ~ for home)
   containerPath?: string; // Optional — defaults to basename of hostPath. Mounted at /workspace/extra/{value}
@@ -55,6 +57,10 @@ export interface NewMessage {
   reply_to_message_id?: string;
   reply_to_message_content?: string;
   reply_to_sender_name?: string;
+  /** Finalized attachment summaries — populated by the media-ingestion pipeline
+   * after file-based media has been processed. Empty/null for text-only messages
+   * and non-file media (contact/location/sticker). */
+  attachments?: ProcessedAttachmentSummary[] | null;
 }
 
 export interface ScheduledTask {
@@ -109,8 +115,20 @@ export interface Channel {
   reactToLatestMessage?(chatJid: string, emoji: string): Promise<void>;
 }
 
-// Callback type that channels use to deliver inbound messages
-export type OnInboundMessage = (chatJid: string, message: NewMessage) => void;
+// Callback type that channels use to deliver inbound messages along with
+// any file-based media references discovered synchronously on the channel side.
+// `mediaRefs` is empty for text-only / non-file media (contact/location/sticker)
+// and non-empty for file-based media (voice/image/document/video/audio).
+export type OnMessageReceived = (
+  chatJid: string,
+  message: NewMessage,
+  mediaRefs: MediaRef[],
+) => void;
+
+// Deprecated alias — channels migrating to the media-ingestion pipeline should
+// use OnMessageReceived. Kept for backwards compat with older channel skills
+// that deliver messages synchronously without media refs.
+export type OnInboundMessage = OnMessageReceived;
 
 // Callback for chat metadata discovery.
 // name is optional — channels that deliver names inline (Telegram) pass it here;

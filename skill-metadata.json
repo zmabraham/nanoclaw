@@ -1,6 +1,8 @@
 {
-  "name": "feature-request",
-  "description": "Write structured PRDs to propose features for the host to build",
-  "tier": 0,
-  "dependencies": []
+  "name": "media-ingestion",
+  "description": "Channel-agnostic media ingestion pipeline for PDF/Image/Voice/Video skills",
+  "tier": 1,
+  "dependencies": [
+    "lifecycle-hooks"
+  ]
 }

@@ -230,6 +230,7 @@ describe('EmacsBridgeChannel', () => {
           sender_name: 'Emacs',
           is_from_me: false,
         }),
+        [],
       );
     });
 

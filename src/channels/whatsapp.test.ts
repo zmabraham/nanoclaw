@@ -392,6 +392,7 @@ describe('WhatsAppChannel', () => {
           sender_name: 'Alice',
           is_from_me: false,
         }),
+        [],
       );
     });
 
@@ -493,6 +494,7 @@ describe('WhatsAppChannel', () => {
       expect(opts.onMessage).toHaveBeenCalledWith(
         'registered@g.us',
         expect.objectContaining({ content: 'A reply message' }),
+        [],
       );
     });
 
@@ -524,6 +526,7 @@ describe('WhatsAppChannel', () => {
       expect(opts.onMessage).toHaveBeenCalledWith(
         'registered@g.us',
         expect.objectContaining({ content: 'Check this photo' }),
+        [],
       );
     });
 
@@ -552,6 +555,7 @@ describe('WhatsAppChannel', () => {
       expect(opts.onMessage).toHaveBeenCalledWith(
         'registered@g.us',
         expect.objectContaining({ content: 'Watch this' }),
+        [],
       );
     });
 
@@ -604,6 +608,7 @@ describe('WhatsAppChannel', () => {
       expect(opts.onMessage).toHaveBeenCalledWith(
         'registered@g.us',
         expect.objectContaining({ sender_name: '5551234' }),
+        [],
       );
     });
   });

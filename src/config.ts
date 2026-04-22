@@ -12,6 +12,16 @@ const envConfig = readEnvFile([
   'ASSISTANT_HAS_OWN_NUMBER',
   'OLLAMA_ADMIN_TOOLS',
   'TZ',
+  'MEDIA_PIPELINE_ENABLED',
+  'MEDIA_MAX_BYTES',
+  'MEDIA_MAX_AGGREGATE_BYTES',
+  'MEDIA_RETAIN_FILES',
+  'MEDIA_MAX_FILES',
+  'MEDIA_REFERENCE_FLOOR_HOURS',
+  'MEDIA_PIPELINE_MAX_CONCURRENCY',
+  'LATE_FINALIZE_MAX_RETRIES',
+  'LATE_FINALIZE_BACKOFF_MS',
+  'LATE_FINALIZE_EXHAUST_COOLDOWN_MS',
 ]);
 
 export const ASSISTANT_NAME =
@@ -101,3 +111,63 @@ function resolveConfigTimezone(): string {
   return 'UTC';
 }
 export const TIMEZONE = resolveConfigTimezone();
+
+// --- Media ingestion pipeline config (added by skill/media-ingestion) ---
+// All new keys MUST appear in the readEnvFile([...]) allowlist above or .env edits are silently ignored.
+
+export const MEDIA_PIPELINE_ENABLED =
+  process.env.MEDIA_PIPELINE_ENABLED || envConfig.MEDIA_PIPELINE_ENABLED || '0';
+
+// Size/concurrency caps where 0 would leave the pipeline non-functional —
+// coerce 0 (and any `<= 0`) back to the default.
+function toPositiveInt(raw: string | undefined, fallback: number): number {
+  if (!raw) return fallback;
+  const n = parseInt(raw, 10);
+  if (!Number.isFinite(n) || n <= 0) return fallback;
+  return n;
+}
+
+// Retention/retry/backoff keys where 0 is a legitimate operator setting.
+function toNonNegativeInt(raw: string | undefined, fallback: number): number {
+  if (!raw) return fallback;
+  const n = parseInt(raw, 10);
+  if (!Number.isFinite(n) || n < 0) return fallback;
+  return n;
+}
+
+export const MEDIA_MAX_BYTES = toPositiveInt(
+  process.env.MEDIA_MAX_BYTES || envConfig.MEDIA_MAX_BYTES,
+  25 * 1024 * 1024,
+);
+export const MEDIA_MAX_AGGREGATE_BYTES = toPositiveInt(
+  process.env.MEDIA_MAX_AGGREGATE_BYTES || envConfig.MEDIA_MAX_AGGREGATE_BYTES,
+  50 * 1024 * 1024,
+);
+export const MEDIA_RETAIN_FILES = toNonNegativeInt(
+  process.env.MEDIA_RETAIN_FILES || envConfig.MEDIA_RETAIN_FILES,
+  100,
+);
+export const MEDIA_MAX_FILES = toNonNegativeInt(
+  process.env.MEDIA_MAX_FILES || envConfig.MEDIA_MAX_FILES,
+  500,
+);
+export const MEDIA_REFERENCE_FLOOR_HOURS = toNonNegativeInt(
+  process.env.MEDIA_REFERENCE_FLOOR_HOURS || envConfig.MEDIA_REFERENCE_FLOOR_HOURS,
+  24,
+);
+export const MEDIA_PIPELINE_MAX_CONCURRENCY = toPositiveInt(
+  process.env.MEDIA_PIPELINE_MAX_CONCURRENCY || envConfig.MEDIA_PIPELINE_MAX_CONCURRENCY,
+  5,
+);
+export const LATE_FINALIZE_MAX_RETRIES = toNonNegativeInt(
+  process.env.LATE_FINALIZE_MAX_RETRIES || envConfig.LATE_FINALIZE_MAX_RETRIES,
+  3,
+);
+export const LATE_FINALIZE_BACKOFF_MS = toNonNegativeInt(
+  process.env.LATE_FINALIZE_BACKOFF_MS || envConfig.LATE_FINALIZE_BACKOFF_MS,
+  500,
+);
+export const LATE_FINALIZE_EXHAUST_COOLDOWN_MS = toNonNegativeInt(
+  process.env.LATE_FINALIZE_EXHAUST_COOLDOWN_MS || envConfig.LATE_FINALIZE_EXHAUST_COOLDOWN_MS,
+  30_000,
+);

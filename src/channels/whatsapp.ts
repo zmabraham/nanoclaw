@@ -348,16 +348,20 @@ export class WhatsAppChannel implements Channel {
               ? fromMe
               : content.startsWith(`${ASSISTANT_NAME}:`);
 
-            this.opts.onMessage(chatJid, {
-              id: msg.key.id || '',
-              chat_jid: chatJid,
-              sender,
-              sender_name: senderName,
-              content,
-              timestamp,
-              is_from_me: fromMe,
-              is_bot_message: isBotMessage,
-            });
+            this.opts.onMessage(
+              chatJid,
+              {
+                id: msg.key.id || '',
+                chat_jid: chatJid,
+                sender,
+                sender_name: senderName,
+                content,
+                timestamp,
+                is_from_me: fromMe,
+                is_bot_message: isBotMessage,
+              },
+              [],
+            );
           } else if (chatJid !== rawJid) {
             // LID translation produced a JID that doesn't match any registered group
             logger.warn(

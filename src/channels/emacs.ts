@@ -115,15 +115,19 @@ export class EmacsBridgeChannel implements Channel {
         const msgId = `emacs-${Date.now()}`;
 
         this.opts.onChatMetadata(EMACS_JID, timestamp, 'Emacs', 'emacs', false);
-        this.opts.onMessage(EMACS_JID, {
-          id: msgId,
-          chat_jid: EMACS_JID,
-          sender: 'emacs',
-          sender_name: 'Emacs',
-          content: text,
-          timestamp,
-          is_from_me: false,
-        });
+        this.opts.onMessage(
+          EMACS_JID,
+          {
+            id: msgId,
+            chat_jid: EMACS_JID,
+            sender: 'emacs',
+            sender_name: 'Emacs',
+            content: text,
+            timestamp,
+            is_from_me: false,
+          },
+          [],
+        );
 
         res
           .writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' })
