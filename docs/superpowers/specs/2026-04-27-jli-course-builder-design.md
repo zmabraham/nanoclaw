@@ -93,23 +93,28 @@ Each stage transition requires user approval. User can go back to any previous s
 ### Endpoints
 
 ```
-POST   /api/courses                    — Create new course
-GET    /api/courses                    — List all courses
-GET    /api/courses/:id                — Get course with current state
-PUT    /api/courses/:id                — Update course metadata
-DELETE /api/courses/:id                — Delete course
+POST   /api/courses                              — Create new course
+GET    /api/courses                              — List all courses
+GET    /api/courses/:id                          — Get course with current state
+PUT    /api/courses/:id                          — Update course metadata
+DELETE /api/courses/:id                          — Delete course (cascades)
 
-POST   /api/courses/:id/stage/1        — Generate course definition doc
-POST   /api/courses/:id/stage/2        — Search A-B journeys
-POST   /api/courses/:id/stage/2/select — Confirm selected A-B journeys
-POST   /api/courses/:id/stage/3        — Mine JLI content via NotebookLM
-POST   /api/courses/:id/stage/4        — Generate outline
-POST   /api/courses/:id/stage/5        — Draft lesson (streaming)
-POST   /api/courses/:id/stage/5/regen  — Regenerate specific section
-POST   /api/courses/:id/stage/6        — Export textbook/slides
+POST   /api/courses/:id/stage/1                  — Generate course definition doc
+POST   /api/courses/:id/stage/2                  — Search A-B journeys
+POST   /api/courses/:id/stage/2/select           — Confirm selected A-B journeys
+POST   /api/courses/:id/stage/3                  — Mine JLI content via NotebookLM
+POST   /api/courses/:id/stage/4                  — Generate outline
+POST   /api/courses/:id/stage/5                  — Draft lesson (streaming)
+POST   /api/courses/:id/stage/5/regen            — Regenerate specific section (by lesson_number + section_number)
+POST   /api/courses/:id/stage/6                  — Export textbook/slides
 
-GET    /api/ab-journeys                — Search A-B journeys (proxied from Sheets)
-GET    /api/ab-journeys/:id            — Get single journey details
+PUT    /api/courses/:id/stage/:stage/approve     — Approve a stage
+PUT    /api/courses/:id/stage/:stage/revert      — Revert to a previous stage (cascades downstream to needs_review)
+GET    /api/courses/:id/stage-progress           — Get status of all 6 stages
+
+GET    /api/ab-journeys?q=&page=1&limit=25       — Search A-B journeys (from local SQLite cache of Sheets data)
+GET    /api/ab-journeys/:id                      — Get single journey details
+GET    /api/courses/:id/exports/:exportId/download — Download exported file
 ```
 
 ### Streaming
@@ -118,11 +123,11 @@ Stage 5 (lesson drafting) uses Server-Sent Events (SSE) to stream Claude's outpu
 
 ### NotebookLM Integration
 
-Queried via the NotebookLM MCP/API during Stage 3. The backend sends the A-B journey description and receives grounded content with source citations. This content is stored in SQLite for the course project so it doesn't need re-querying.
+See "NotebookLM Query Strategy" section below for full details on endpoint, concurrency, and notebook selection.
 
 ### Google Sheets Integration
 
-Read-only access via Google Sheets API. A-B journeys are fetched on demand during Stage 2 (search/rank). Response is cached in memory for the session duration. No data is written back to Sheets.
+Read-only access via Google Sheets API. All 1,759 rows are loaded into SQLite on startup (see "A-B Journey Search" section). Sheets is refreshed every 24 hours or on manual trigger. No data is written back to Sheets.
 
 ## Data Model (SQLite)
 
@@ -134,61 +139,106 @@ CREATE TABLE courses (
   lesson_count INTEGER NOT NULL,
   guidelines TEXT,
   current_stage INTEGER DEFAULT 1,
+  version INTEGER DEFAULT 1,
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Per-stage tracking: status and cascading invalidation
+CREATE TABLE stage_progress (
+  course_id TEXT REFERENCES courses(id) ON DELETE CASCADE,
+  stage INTEGER NOT NULL,
+  status TEXT NOT NULL DEFAULT 'pending',  -- pending | in_progress | needs_review | approved
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (course_id, stage)
+);
+
 CREATE TABLE course_definitions (
   id TEXT PRIMARY KEY,
-  course_id TEXT REFERENCES courses(id),
+  course_id TEXT REFERENCES courses(id) ON DELETE CASCADE,
   content TEXT NOT NULL,
   approved BOOLEAN DEFAULT FALSE,
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
+-- A-B selections with full Sheet columns + per-lesson assignment
 CREATE TABLE ab_selections (
   id TEXT PRIMARY KEY,
-  course_id TEXT REFERENCES courses(id),
+  course_id TEXT REFERENCES courses(id) ON DELETE CASCADE,
   journey_title TEXT NOT NULL,
-  journey_description TEXT NOT NULL,
+  description_a TEXT NOT NULL,             -- "A" half of the journey
+  description_b TEXT NOT NULL,             -- "B" half of the journey
   source_course TEXT,
   source_lesson TEXT,
-  sort_order INTEGER,
+  primary_text_1_num TEXT,
+  primary_text_1_citation TEXT,
+  primary_text_2_num TEXT,
+  primary_text_2_citation TEXT,
+  lesson_number INTEGER,                   -- which lesson this journey is assigned to
+  section_position INTEGER,                -- ordering within the lesson
+  sort_order INTEGER,                      -- global ordering
   approved BOOLEAN DEFAULT FALSE
+);
+
+-- Join table for lesson ↔ journey assignments (supports 3-6 journeys per lesson)
+CREATE TABLE lesson_journey_assignments (
+  course_id TEXT REFERENCES courses(id) ON DELETE CASCADE,
+  lesson_number INTEGER NOT NULL,
+  ab_selection_id TEXT REFERENCES ab_selections(id) ON DELETE CASCADE,
+  section_position INTEGER NOT NULL,
+  PRIMARY KEY (course_id, lesson_number, ab_selection_id)
 );
 
 CREATE TABLE mined_content (
   id TEXT PRIMARY KEY,
-  course_id TEXT REFERENCES courses(id),
-  journey_id TEXT REFERENCES ab_selections(id),
+  course_id TEXT REFERENCES courses(id) ON DELETE CASCADE,
+  journey_id TEXT REFERENCES ab_selections(id) ON DELETE CASCADE,
   content TEXT NOT NULL,
-  sources TEXT,
+  sources TEXT,  -- JSON-encoded array of citation objects from NotebookLM
   approved BOOLEAN DEFAULT FALSE
 );
 
 CREATE TABLE outlines (
   id TEXT PRIMARY KEY,
-  course_id TEXT REFERENCES courses(id),
+  course_id TEXT REFERENCES courses(id) ON DELETE CASCADE,
   lesson_number INTEGER NOT NULL,
+  content TEXT NOT NULL,  -- JSON: { driving_questions, big_ideas, sections: [{title, journey_id, texts, activities}] }
+  approved BOOLEAN DEFAULT FALSE
+);
+
+-- Section-based drafts for per-section regeneration
+CREATE TABLE lesson_sections (
+  id TEXT PRIMARY KEY,
+  course_id TEXT REFERENCES courses(id) ON DELETE CASCADE,
+  lesson_number INTEGER NOT NULL,
+  section_number INTEGER NOT NULL,
+  section_type TEXT,  -- opening | main | closing
   content TEXT NOT NULL,
   approved BOOLEAN DEFAULT FALSE
 );
 
 CREATE TABLE lesson_drafts (
   id TEXT PRIMARY KEY,
-  course_id TEXT REFERENCES courses(id),
+  course_id TEXT REFERENCES courses(id) ON DELETE CASCADE,
   lesson_number INTEGER NOT NULL,
-  content TEXT NOT NULL,
+  content TEXT NOT NULL,  -- assembled from lesson_sections
   approved BOOLEAN DEFAULT FALSE
 );
 
 CREATE TABLE exports (
   id TEXT PRIMARY KEY,
-  course_id TEXT REFERENCES courses(id),
-  type TEXT NOT NULL,
+  course_id TEXT REFERENCES courses(id) ON DELETE CASCADE,
+  type TEXT NOT NULL,  -- pdf | pptx
   file_path TEXT NOT NULL,
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
+
+-- Trigger: update updated_at on courses
+CREATE TRIGGER update_course_timestamp
+AFTER UPDATE ON courses
+BEGIN
+  UPDATE courses SET updated_at = CURRENT_TIMESTAMP WHERE id = NEW.id;
+END;
 ```
 
 ## Error Handling
@@ -209,6 +259,49 @@ CREATE TABLE exports (
 - API keys stored in environment variables, never committed.
 - Google Sheets credentials via OAuth or service account (read-only scope).
 - No user authentication in MVP — single-user production tool. Auth can be added later.
+
+## Deployment Context
+
+This is a **standalone web app** separate from the GabAI/NanoClaw orchestrator. The spec lives in this repo for convenience (shared NotebookLM infrastructure and project context), but the app runs independently with its own Express server, SQLite database, and frontend build. Future integration as a GabAI skill is possible but not in scope for MVP.
+
+## NotebookLM Query Strategy
+
+The Express backend calls NotebookLM via the existing HTTP daemon (`notebooklm_daemon.py` on port 11435). Each A-B journey query sends the journey title + description to the `callAsk` endpoint with the relevant notebook ID.
+
+**Notebook selection:** All JLI lessons are indexed in a single NotebookLM notebook. The notebook ID is configured in Settings and stored as an env var (`NOTEBOOKLM_NOTEBOOK_ID`).
+
+**Concurrency:** Queries run with a pool of 3 concurrent requests (matching the daemon's `SessionPool.max_warm=3`). A course with 20 A-B journeys processes in ~7 batches. Progress is reported per-journey to the frontend via SSE.
+
+**Queue:** An in-memory job queue in the Express process manages batch queries. Failed queries retry 3 times with exponential backoff. The queue state is ephemeral — if the server restarts, Stage 3 must be re-run (mined content already persisted in SQLite is preserved).
+
+## A-B Journey Search (Stage 2)
+
+**Input:** Search is auto-derived from the Course Definition Doc (topic + key themes extracted by a lightweight Claude call). User can also type a manual search query to refine.
+
+**Ranking:** TF-IDF cosine similarity between the search query and concatenated A-B journey fields (title + description A + description B + primary text citations). Top 50 results returned.
+
+**Loading strategy:** All 1,759 rows are loaded from Sheets into SQLite on app startup and refreshed every 24 hours (or on manual refresh from Settings). This avoids per-request Sheets API calls and enables fast text search.
+
+**Pagination:** `GET /api/ab-journeys?q=...&page=1&limit=25` returns paginated results.
+
+## Stage Navigation and Cascading Invalidation
+
+Each course tracks per-stage status in the `stage_progress` table. When a user revises Stage N, all stages N+1 through 6 are reset to `needs_review` status. Their data is preserved but flagged as potentially stale. The UI shows a warning on downstream stages: "Upstream stage revised — review recommended."
+
+User can explicitly re-approve a downstream stage without changes if the upstream revision didn't affect it.
+
+## Export Details (Stage 6)
+
+**Libraries:**
+- **PDF**: `pdfkit` (Node.js) with a JLI-branded template (fonts, margins, header/footer defined in a JSON config file at `config/export-template.json`).
+- **PowerPoint**: `pptxgenjs` with a JLI slide master template at `config/slide-template.pptx`.
+- **Google Docs**: Not in MVP scope. PDF export first; Google Docs export is a future enhancement requiring OAuth.
+
+**File serving:** Exported files are stored in `data/exports/{course_id}/`. Served via `GET /api/courses/:id/exports/:exportId/download`. Files are cleaned up after 30 days.
+
+## Lesson Construction Manual
+
+Stored as a static file at `config/lesson-construction-manual.md`. Loaded at server startup and injected as a system prompt prefix for Claude in Stage 5. Can be edited by placing a new file at that path. No database storage — it's a reference document, not per-course data.
 
 ## Future Considerations (Not in Scope)
 
