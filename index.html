@@ -953,6 +953,16 @@ The Alter Rebbe concludes the Zohar's candle analogy: the Shechinah is the super
     const detailHeader = document.getElementById("detailHeader");
     const detailBody = document.getElementById("detailBody");
 
+    function renderMd(text) {
+      return text
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        .replace(/\*\*\*(.+?)\*\*\*/g, '<strong><em>$1</em></strong>')
+        .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+        .replace(/\*(.+?)\*/g, '<em>$1</em>')
+        .replace(/\n\n/g, '</p><p>')
+        .replace(/^/, '<p>').replace(/$/, '</p>');
+    }
+
     function openDetail(num) {
       const detail = chapterDetails[num];
       if (!detail) return;
@@ -979,9 +989,9 @@ The Alter Rebbe concludes the Zohar's candle analogy: the Shechinah is the super
 
       detailBody.innerHTML = `
         <h3>Overview</h3>
-        <div class="overview-text">${detail.overview}</div>
+        <div class="overview-text">${renderMd(detail.overview)}</div>
         <div class="outline-heading">Chapter Outline</div>
-        ${detail.outline}
+        ${renderMd(detail.outline)}
       `;
 
       overlay.classList.add("active");
