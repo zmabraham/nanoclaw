@@ -1,0 +1,487 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Map of Tanya</title>
+  <style>
+    :root {
+      --ink: #2d2117;
+      --muted: #6e5c4a;
+      --paper: #f7ecd8;
+      --paper-deep: #ead7b8;
+      --line: rgba(95, 66, 39, 0.26);
+      --shadow: 0 12px 30px rgba(61, 37, 17, 0.16);
+      --radius: 14px;
+      --blue: #1f6f8b;
+      --orange: #c96c1b;
+      --green: #3b7f3f;
+      --gold: #c49323;
+      --teal: #138180;
+      --purple: #74508f;
+      --red: #c65036;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      color: var(--ink);
+      font-family: "Georgia", "Times New Roman", serif;
+      background:
+        radial-gradient(circle at top left, rgba(255, 255, 255, 0.72), transparent 34rem),
+        linear-gradient(135deg, #f3dfbd 0%, #f9f0df 52%, #ead1a9 100%);
+      min-height: 100vh;
+      padding: 24px;
+    }
+    .page {
+      max-width: 1800px;
+      margin: 0 auto;
+      background: rgba(255, 250, 240, 0.84);
+      border: 2px solid rgba(95, 66, 39, 0.28);
+      border-radius: 24px;
+      box-shadow: var(--shadow);
+      overflow: hidden;
+    }
+    header {
+      display: grid;
+      grid-template-columns: minmax(280px, 560px) 1fr;
+      gap: 22px;
+      align-items: center;
+      padding: 22px 28px;
+      background:
+        linear-gradient(90deg, rgba(255,255,255,.5), rgba(255,255,255,0)),
+        linear-gradient(180deg, #fff6e8 0%, #f0d9b5 100%);
+      border-bottom: 2px solid rgba(95, 66, 39, 0.22);
+    }
+    .title-plaque {
+      background: linear-gradient(135deg, #8a321f 0%, #b55730 100%);
+      color: #fff7e8;
+      border: 3px solid #d9ac5a;
+      border-radius: 18px;
+      padding: 18px 24px;
+      box-shadow: inset 0 0 0 2px rgba(255,255,255,.18);
+      position: relative;
+    }
+    .title-plaque::before,
+    .title-plaque::after {
+      content: "";
+      position: absolute;
+      width: 36px;
+      height: 36px;
+      border: 2px solid rgba(255, 232, 180, 0.85);
+      top: 9px;
+    }
+    .title-plaque::before { left: 9px; border-right: 0; border-bottom: 0; border-radius: 11px 0 0 0; }
+    .title-plaque::after { right: 9px; border-left: 0; border-bottom: 0; border-radius: 0 11px 0 0; }
+    h1 {
+      margin: 0;
+      font-size: clamp(2.4rem, 5vw, 5.3rem);
+      line-height: 0.95;
+      letter-spacing: -0.05em;
+      font-weight: 700;
+      text-shadow: 0 2px 0 rgba(0,0,0,.12);
+    }
+    .subtitle {
+      display: flex;
+      gap: 18px;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .subtitle h2 {
+      margin: 0 0 6px;
+      font-size: clamp(1.4rem, 2.4vw, 3rem);
+      line-height: 1.08;
+      font-weight: 600;
+      color: #4a2a18;
+    }
+    .subtitle p {
+      margin: 0;
+      color: #7b5834;
+      font-size: clamp(1rem, 1.4vw, 1.35rem);
+      font-style: italic;
+    }
+    .top-icon { width: 112px; height: 92px; flex: 0 0 auto; color: #9c632b; }
+    .toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      align-items: center;
+      padding: 16px 28px;
+      background: rgba(255, 248, 232, 0.88);
+      border-bottom: 1px solid var(--line);
+    }
+    .search {
+      flex: 1 1 320px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      background: #fffaf0;
+      border: 1px solid rgba(95, 66, 39, 0.24);
+      border-radius: 999px;
+      padding: 10px 16px;
+    }
+    .search input {
+      width: 100%;
+      border: 0;
+      outline: 0;
+      background: transparent;
+      font: 1rem/1.2 system-ui, -apple-system, Segoe UI, sans-serif;
+      color: var(--ink);
+    }
+    .toolbar button {
+      border: 1px solid rgba(95, 66, 39, 0.25);
+      background: #fffaf0;
+      border-radius: 999px;
+      padding: 10px 16px;
+      cursor: pointer;
+      color: #4b331e;
+      font: 600 0.95rem/1 system-ui, -apple-system, Segoe UI, sans-serif;
+      box-shadow: 0 2px 8px rgba(61, 37, 17, 0.08);
+    }
+    .toolbar button:hover { background: #fff3d9; }
+    main { padding: 18px; }
+    .section {
+      --accent: var(--blue);
+      --tint: #e5f2f8;
+      display: grid;
+      grid-template-columns: 210px 1fr;
+      gap: 0;
+      margin-bottom: 10px;
+      border: 1px solid rgba(95, 66, 39, 0.22);
+      border-radius: var(--radius);
+      overflow: hidden;
+      background: var(--tint);
+    }
+    .section.blue { --accent: var(--blue); --tint: #e7f4f8; }
+    .section.orange { --accent: var(--orange); --tint: #fff0dc; }
+    .section.green { --accent: var(--green); --tint: #eaf5e8; }
+    .section.gold { --accent: var(--gold); --tint: #fff6d9; }
+    .section.teal { --accent: var(--teal); --tint: #e5f6f4; }
+    .section.purple { --accent: var(--purple); --tint: #f1e8f5; }
+    .section.red { --accent: var(--red); --tint: #fff0e8; }
+    .section-label {
+      background:
+        linear-gradient(180deg, rgba(255,255,255,.18), rgba(0,0,0,.08)),
+        var(--accent);
+      color: white;
+      padding: 20px 18px;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      gap: 12px;
+      min-height: 160px;
+    }
+    .section-label .icon { font-size: 2.35rem; line-height: 1; opacity: .94; }
+    .range { font-size: 2rem; line-height: 1; font-weight: 800; letter-spacing: -0.02em; }
+    .section-label h3 { margin: 0; font-size: 1.45rem; line-height: 1.08; font-weight: 600; }
+    .chapters {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(165px, 1fr));
+      gap: 6px;
+      padding: 8px;
+      background: linear-gradient(180deg, rgba(255,255,255,.4), rgba(255,255,255,.08));
+    }
+    .chapter {
+      background: rgba(255, 252, 244, .82);
+      border: 1px solid color-mix(in srgb, var(--accent), white 52%);
+      border-radius: 10px;
+      padding: 10px 10px 11px;
+      box-shadow: inset 0 1px 0 rgba(255,255,255,.72);
+      position: relative;
+      min-height: 150px;
+      transition: transform .18s ease, box-shadow .18s ease, background .18s ease;
+    }
+    .chapter:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 8px 18px rgba(61, 37, 17, 0.12);
+      background: #fffdf7;
+    }
+    .chapter.hidden { display: none; }
+    .chapter-head { display: flex; gap: 8px; align-items: flex-start; margin-bottom: 8px; }
+    .num {
+      display: grid;
+      place-items: center;
+      flex: 0 0 auto;
+      min-width: 34px;
+      height: 34px;
+      padding: 0 6px;
+      border-radius: 8px;
+      background: var(--accent);
+      color: white;
+      font-family: system-ui, -apple-system, Segoe UI, sans-serif;
+      font-weight: 800;
+      font-size: 1.15rem;
+      line-height: 1;
+      box-shadow: inset 0 0 0 2px rgba(255,255,255,.18);
+    }
+    .chapter h4 { margin: 0; color: color-mix(in srgb, var(--accent), #20150f 25%); font-size: 1rem; line-height: 1.08; }
+    .chapter p { margin: 0; color: #3b2c1f; font-size: .92rem; line-height: 1.22; }
+    .wide .chapters { grid-template-columns: repeat(3, minmax(230px, 1fr)); }
+    .wide .chapter { min-height: 110px; }
+    footer {
+      display: grid;
+      grid-template-columns: minmax(330px, 600px) 1fr;
+      gap: 20px;
+      padding: 18px 28px 24px;
+      background: rgba(255, 248, 232, 0.82);
+      border-top: 1px solid var(--line);
+    }
+    .key, .note {
+      background: #fffaf0;
+      border: 1px solid rgba(95, 66, 39, 0.24);
+      border-radius: 16px;
+      padding: 16px;
+      box-shadow: inset 0 1px 0 rgba(255,255,255,.9);
+    }
+    .key {
+      display: grid;
+      grid-template-columns: auto 1fr;
+      gap: 14px;
+      align-items: center;
+    }
+    .key-title {
+      background: #17495f;
+      color: white;
+      border-radius: 10px;
+      border: 2px solid #d7aa58;
+      padding: 10px 14px;
+      font-size: 1.65rem;
+      font-weight: 800;
+      letter-spacing: .02em;
+    }
+    .key-items {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 13px;
+      font-family: system-ui, -apple-system, Segoe UI, sans-serif;
+      font-size: .92rem;
+      color: #4b3829;
+    }
+    .key-item strong { display: block; color: #2f2118; font-size: .98rem; }
+    .note {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      font-size: 1.25rem;
+      line-height: 1.35;
+      font-style: italic;
+      color: #5a371f;
+    }
+    @media (max-width: 1100px) {
+      header, footer { grid-template-columns: 1fr; }
+      .section { grid-template-columns: 1fr; }
+      .section-label { min-height: auto; flex-direction: row; align-items: center; justify-content: flex-start; }
+      .section-label h3 { font-size: 1.25rem; }
+      .wide .chapters { grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); }
+    }
+    @media print {
+      body { padding: 0; background: white; }
+      .page { border-radius: 0; box-shadow: none; border: 0; }
+      .toolbar { display: none; }
+      .chapter { break-inside: avoid; }
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <header>
+      <div class="title-plaque">
+        <h1>Map of TANYA</h1>
+      </div>
+      <div class="subtitle">
+        <div>
+          <h2>A Visual Overview of the 53 Chapters of Likutei Amarim–Tanya</h2>
+          <p>Learning aid based on the flow of Tanya</p>
+        </div>
+        <svg class="top-icon" viewBox="0 0 160 120" aria-hidden="true">
+          <path d="M18 24c26-12 43-6 59 8v62c-16-14-37-18-59-7z" fill="none" stroke="currentColor" stroke-width="5"/>
+          <path d="M142 24c-26-12-43-6-59 8v62c16-14 37-18 59-7z" fill="none" stroke="currentColor" stroke-width="5"/>
+          <path d="M80 32v65" stroke="currentColor" stroke-width="4"/>
+          <path d="M31 42c13-4 25-2 35 6M31 58c13-4 25-2 35 6M129 42c-13-4-25-2-35 6M129 58c-13-4-25-2-35 6" stroke="currentColor" stroke-width="3" fill="none" opacity=".75"/>
+          <path d="M126 100h25M138 97V61M132 61h12M138 32c10 15 10 24 0 31-10-7-10-16 0-31z" stroke="currentColor" stroke-width="4" fill="none"/>
+        </svg>
+      </div>
+    </header>
+    <div class="toolbar">
+      <label class="search" aria-label="Search chapters">
+        <span>🔎</span>
+        <input id="searchInput" type="search" placeholder="Search by chapter, theme, or keyword..." />
+      </label>
+      <button type="button" onclick="window.print()">Print</button>
+      <button type="button" id="resetButton">Reset</button>
+    </div>
+    <main id="map"></main>
+    <footer>
+      <div class="key">
+        <div class="key-title">KEY</div>
+        <div class="key-items">
+          <div class="key-item"><strong># Number</strong>The chapter number</div>
+          <div class="key-item"><strong>Topic</strong>The main theme of the chapter</div>
+          <div class="key-item"><strong>Core Idea</strong>A concise summary of the chapter's teaching</div>
+        </div>
+      </div>
+      <div class="note">
+        Tanya emphasizes the inner struggle, the attainable ideal of the Beinoni, and the purpose of drawing G-dliness into the physical world.
+      </div>
+    </footer>
+  </div>
+  <script>
+    const sections = [
+      {
+        range: "1–8",
+        title: "Foundations: The Two Souls and Their Structure",
+        icon: "🏛️",
+        color: "blue",
+        chapters: [
+          [1, "The First Soul", "Introduces the Animal Soul, rooted in kelipah, driven by ego, self-preservation, and desire. It frames life as an inner struggle between the Animal Soul and the Divine Soul."],
+          [2, "The Divine Soul", "Defines the Divine Soul as a literal part of G-d above. Every Jew possesses this pure spark, bound organically to the Divine."],
+          [3, "Ten Faculties", "Explains the ten faculties of the Divine Soul: intellect gives birth to holy emotions. Chochmah, Binah, and Da'at generate love and awe of G-d."],
+          [4, "Three Garments", "Thought, speech, and action are the soul's garments. Through Torah and mitzvot they unite the person with G-d's will."],
+          [5, "Studying Torah", "Torah study creates a uniquely intimate union. The mind both grasps and is grasped by G-d's wisdom."],
+          [6, "Animal Soul Anatomy", "The Animal Soul also has ten faculties and three garments, but they are directed toward selfish and mundane ends."],
+          [7, "Kelipat Nogah", "Permitted worldly activities can be elevated when directed toward serving G-d. Without higher purpose, they descend into spiritual coarseness."],
+          [8, "The Forbidden", "Forbidden acts and foods come from the three impure kelipot and cannot be elevated through ordinary use. They require deep teshuvah for repair."]
+        ]
+      },
+      {
+        range: "9–17",
+        title: "The Inner Battle and the Beinoni",
+        icon: "⚔️",
+        color: "orange",
+        chapters: [
+          [9, "The Heart as Battleground", "The body is a small city contested by two souls. The Animal Soul seeks control from the heart, while the Divine Soul governs from the mind."],
+          [10, "The Tzaddik", "A Tzaddik has transformed or nullified evil within. This rare state is not the standard path for most people."],
+          [11, "The Rasha", "A Rasha lets the Animal Soul govern thought, speech, or action. Even temporary surrender gives evil a foothold."],
+          [12, "Defining the Beinoni", "The Beinoni still feels temptation, but never sins in thought, speech, or action. Their greatness lies in total behavioral self-mastery."],
+          [13, "Constant Struggle", "The Beinoni's inner conflict never disappears. Lifelong vigilance and restraint are part of their mission."],
+          [14, "An Attainable Goal", "Unlike the Tzaddik, the Beinoni is attainable for everyone. The mind can rule the heart and direct behavior."],
+          [15, "Serving G-d", "True service means exertion and struggle, not merely acting well by habit. Growth requires effort beyond one's comfort zone."],
+          [16, "Mind Over Heart", "Even if deep emotion is absent, sincere contemplation can generate enough feeling to guide action. Resolve and understanding can sustain avodah."],
+          [17, "Hidden Love in Reach", "Every Jew can awaken an inner love of G-d sufficient for practical commitment. Accessibility lies in action, not emotional perfection."]
+        ]
+      },
+      {
+        range: "18–25",
+        title: "Hidden Love and the Power of Mitzvot",
+        icon: "💚",
+        color: "green",
+        chapters: [
+          [18, "Inherited Love", "Every Jew has a hidden, inherited love for G-d from the Patriarchs. It exists even when it is not consciously felt."],
+          [19, "A Flame Rising Upward", "The soul naturally longs to reunite with its Source. This deep instinct explains Jewish self-sacrifice for faith."],
+          [20, "Anochi and Divine Unity", "The first commandment contains the entirety of faith. All mitzvot rest on the truth that there is no reality apart from G-d."],
+          [21, "Creation by Divine Speech", "Just as speech reveals thought, creation is continuously sustained by Divine speech. Nothing exists independently of G-d."],
+          [22, "The Root of Sin", "Idolatry and sin deny Divine unity by granting false independence to created things. Even ordinary sin reflects this rupture."],
+          [23, "Mitzvot as Divine Unity", "When a person performs a mitzvah, they become a vehicle for G-d's will. Mitzvot unite the person with absolute Divine oneness."],
+          [24, "Sin as Separation", "A sin cuts a person off from revealed Divine unity more than external impurity does. It is a moment of self-imposed alienation from G-d."],
+          [25, "Using Hidden Love", "Meditating on the soul's innate bond with G-d gives strength to avoid sin and do mitzvot. Hidden love can power daily religious life."]
+        ]
+      },
+      {
+        range: "26–34",
+        title: "Joy, Obstacles, and Spiritual Realism",
+        icon: "☀️",
+        color: "gold",
+        chapters: [
+          [26, "Fighting Sadness", "Sadness weakens spiritual battle, while joy energizes it. One must resist depression in order to serve G-d effectively."],
+          [27, "Temptation Is Not Failure", "Unwanted thoughts do not mean spiritual defeat. For the Beinoni, resisting them is itself the avodah."],
+          [28, "Distractions in Prayer", "Foreign thoughts during prayer should not crush a person. Sometimes their appearance reflects the challenge one is meant to overcome."],
+          [29, "Breaking Spiritual Blockage", "When the heart is dull, one must humble the ego and break inner coarseness. Bitterness can clear the way for renewed sensitivity."],
+          [30, "Cultivating Humility", "Seeing oneself honestly and judging others generously fosters humility. This keeps pride from blocking spiritual growth."],
+          [31, "Bitterness and Joy Together", "One may feel broken over spiritual distance while rejoicing in the soul's bond with G-d. Healthy bitterness differs from despair."],
+          [32, "Love Your Fellow", "True love of another Jew comes from identifying with the soul rather than the body. This chapter is called the heart of Tanya."],
+          [33, "Joy in Divine Nearness", "Reflecting on G-d's all-encompassing presence fills a person with happiness. One rejoices that G-d dwells with them through Torah and mitzvot."],
+          [34, "Making a Dwelling", "A person should ask whether they are providing a dwelling place for the Shechinah. Torah and mitzvot make that possible in ordinary life."]
+        ]
+      },
+      {
+        range: "35–40",
+        title: "Purpose of Creation and the Work of Mitzvot",
+        icon: "🏠",
+        color: "teal",
+        chapters: [
+          [35, "Dirah Betachtonim", "The purpose of creation is that G-d have a dwelling in the lowest world. This is accomplished specifically through practical mitzvot."],
+          [36, "Messianic Fulfillment", "The goal of creation will be revealed in the Messianic era, when G-dliness will shine openly in the physical world."],
+          [37, "Elevating the Material", "Mitzvot transform physical things into vehicles for holiness. Tzedakah is especially powerful because it channels one's total life-energy."],
+          [38, "The Role of Kavanah", "The action of a mitzvah is its body, while intention is its soul. Love and awe give mitzvot spiritual wings."],
+          [39, "Levels of Ascent", "Different kinds of intention elevate mitzvot to different spiritual worlds. Deeper, contemplative love and awe raise them higher."],
+          [40, "Why Speech Matters", "Torah study and prayer must be verbalized because the goal is to draw holiness into the physical body and world."]
+        ]
+      },
+      {
+        range: "41–50",
+        title: "Love, Awe, and Meditative Pathways",
+        icon: "💜",
+        color: "purple",
+        chapters: [
+          [41, "The Foundation of Awe", "All avodah must begin with yirah, accepting the yoke of Heaven. A person should remember that G-d stands over them and sees all."],
+          [42, "Cultivating Fear", "Fear of G-d is developed through sustained contemplation. Da'at makes reverence vivid and practical."],
+          [43, "Two Levels of Love and Awe", "Tanya distinguishes lower and higher forms of love and awe. Some are cultivated through meditation, while others are gifted from above."],
+          [44, "Like a Son, Like a Servant", "Spiritual life includes the love of a child and the submission of a servant. Both dynamics shape devotion."],
+          [45, "The Path of Compassion", "Compassion for the soul trapped in materiality can awaken renewed love for G-d. Rachamim becomes a path to spiritual feeling."],
+          [46, "Reciprocal Love", "Meditating on G-d's great love for the Jewish people naturally awakens a loving response. Love evokes love."],
+          [47, "The Daily Exodus", "Every day a Jew must leave their personal Egypt by freeing the soul from inner limitations. Shema becomes a daily redemption."],
+          [48, "Encompassing and Pervading Light", "G-d relates to the world through both tailored immanence and infinite transcendence. This helps explain how He is both within all and beyond all."],
+          [49, "Nullification Before G-d", "Realizing the utter smallness of creation before G-d arouses a yearning to transcend self and cleave to Divine unity."],
+          [50, "Resisting Klot HaNefesh", "Even intense longing to dissolve into G-d must be restrained. The soul must return to the world to fulfill its mission here."]
+        ]
+      },
+      {
+        range: "51–53",
+        title: "Shechinah, Torah, and the Culmination",
+        icon: "👑",
+        color: "red",
+        wide: true,
+        chapters: [
+          [51, "The Shechinah Rests Below", "The Shechinah can rest upon a person through Torah and mitzvot, as flame rests upon a wick and oil. The body becomes a vessel for Divine presence."],
+          [52, "Holy of Holies Today", "After the Temple's destruction, the Shechinah's central dwelling is in the four cubits of halachah. Torah study recreates the Holy of Holies."],
+          [53, "The Grand Conclusion", "All of creation descends for the sake of this lowest world becoming a dwelling for G-d. Human avodah completes that Divine plan."]
+        ]
+      }
+    ];
+
+    const map = document.getElementById("map");
+
+    function renderMap() {
+      map.innerHTML = sections.map(section => `
+        <section class="section ${section.color} ${section.wide ? "wide" : ""}">
+          <aside class="section-label">
+            <div class="icon" aria-hidden="true">${section.icon}</div>
+            <div>
+              <div class="range">${section.range}</div>
+              <h3>${section.title}</h3>
+            </div>
+          </aside>
+          <div class="chapters">
+            ${section.chapters.map(([num, title, summary]) => `
+              <article class="chapter" data-search="${`${num} ${title} ${summary} ${section.title}`.toLowerCase().replace(/"/g, '&quot;')}">
+                <div class="chapter-head">
+                  <span class="num">${num}</span>
+                  <h4>${title}</h4>
+                </div>
+                <p>${summary}</p>
+              </article>
+            `).join("")}
+          </div>
+        </section>
+      `).join("");
+    }
+
+    renderMap();
+
+    const searchInput = document.getElementById("searchInput");
+    const resetButton = document.getElementById("resetButton");
+
+    searchInput.addEventListener("input", () => {
+      const query = searchInput.value.trim().toLowerCase();
+      document.querySelectorAll(".chapter").forEach(card => {
+        card.classList.toggle("hidden", query && !card.dataset.search.includes(query));
+      });
+    });
+
+    resetButton.addEventListener("click", () => {
+      searchInput.value = "";
+      document.querySelectorAll(".chapter").forEach(card => card.classList.remove("hidden"));
+    });
+  </script>
+</body>
+</html>
