@@ -955,10 +955,9 @@ The Alter Rebbe concludes the Zohar's candle analogy: the Shechinah is the super
 
     function renderMd(text) {
       return text
-        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
         .replace(/\*\*\*(.+?)\*\*\*/g, '<strong><em>$1</em></strong>')
         .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-        .replace(/\*(.+?)\*/g, '<em>$1</em>')
+        .replace(/(?<![a-zA-Z])\*(?!\s)(.+?)(?<!\s)\*(?![a-zA-Z])/g, '<em>$1</em>')
         .replace(/\n\n/g, '</p><p>')
         .replace(/^/, '<p>').replace(/$/, '</p>');
     }
@@ -991,7 +990,7 @@ The Alter Rebbe concludes the Zohar's candle analogy: the Shechinah is the super
         <h3>Overview</h3>
         <div class="overview-text">${renderMd(detail.overview)}</div>
         <div class="outline-heading">Chapter Outline</div>
-        ${renderMd(detail.outline)}
+        ${detail.outline}
       `;
 
       overlay.classList.add("active");
