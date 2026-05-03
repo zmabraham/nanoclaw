@@ -173,6 +173,18 @@
     .section-label .icon { font-size: 2.35rem; line-height: 1; opacity: .94; }
     .range { font-size: 2rem; line-height: 1; font-weight: 800; letter-spacing: -0.02em; }
     .section-label h3 { margin: 0; font-size: 1.45rem; line-height: 1.08; font-weight: 600; }
+    .section-label {
+      cursor: pointer;
+      transition: filter .15s ease;
+    }
+    .section-label:hover { filter: brightness(1.08); }
+    .section-click-hint {
+      font-size: .78rem;
+      font-family: system-ui, -apple-system, Segoe UI, sans-serif;
+      opacity: .7;
+      margin-top: 6px;
+      letter-spacing: .01em;
+    }
     .chapters {
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(165px, 1fr));
@@ -907,11 +919,12 @@ The Alter Rebbe concludes the Zohar's candle analogy: the Shechinah is the super
     function renderMap() {
       map.innerHTML = sections.map(section => `
         <section class="section ${section.color} ${section.wide ? "wide" : ""}">
-          <aside class="section-label">
+          <aside class="section-label" data-section="${section.range}">
             <div class="icon" aria-hidden="true">${section.icon}</div>
             <div>
               <div class="range">${section.range}</div>
               <h3>${section.title}</h3>
+              <div class="section-click-hint">Click for details</div>
             </div>
           </aside>
           <div class="chapters">
@@ -966,6 +979,87 @@ The Alter Rebbe concludes the Zohar's candle analogy: the Shechinah is the super
         .replace(/^/, '<p>').replace(/$/, '</p>');
     }
 
+    const groupDetails = {
+      "1–8": {
+        overview: `Chapters 1 through 8 of the Tanya introduce the foundational spiritual anatomy of the Jew, establishing that every individual possesses two distinct souls. The first is the animal soul, which originates from *kelipat nogah* (an intermediary spiritual level containing both good and evil) and provides physical vitality while sourcing both physical bodily desires and naturally good traits, like compassion. The second is the divine soul, which is "truly a part of G-d above," originating in Divine Wisdom and descending through the spiritual worlds while remaining bound to G-d.
+
+Both souls possess ten faculties—three intellectual (*ChaBaD*) and seven emotional (*middot*)—and express themselves through three "garments": thought, speech, and action. The divine soul's garments are Torah and mitzvot. The author stresses the unparalleled superiority of Torah study: while mitzvot are garments that encompass the soul, Torah study acts as both internalized "food" and an encompassing "garment," achieving a perfect, reciprocal "embrace" with G-d's wisdom.
+
+Conversely, the animal soul's garments are any mundane thoughts, words, or deeds not directed toward G-d. While neutral, permitted actions (from *kelipat nogah*) can be elevated to holiness if performed for the sake of heaven, indulging in them purely for bodily pleasure temporarily drags their vitality down into the utterly impure *kelipot*. Forbidden actions or foods are permanently bound to these three impure *kelipot* and cannot ascend unless the person achieves profound "repentance out of love". Unrectified indulgences require post-life spiritual purification, such as the "Purgatory of the Grave".`,
+        outline: `<div class="outline-section"><strong>I. The Two Souls (Chapters 1–2)</strong><ul><li>The heavenly oath to "be righteous" and the true definition of the *beinoni*.</li><li>The animal soul stems from *kelipat nogah*, containing four elements.</li><li>The divine soul is a literal "part of G-d," rooted in Divine Wisdom.</li></ul></div><div class="outline-section"><strong>II. Anatomy of the Soul (Chapter 3)</strong><ul><li>The soul comprises three intellectual faculties (*ChaBaD*) and seven emotional traits.</li><li>Deep intellectual contemplation gives birth to the emotions of love and fear, cemented by *daat*.</li></ul></div><div class="outline-section"><strong>III. The Garments of Holiness (Chapters 4–5)</strong><ul><li>The divine soul's garments are the thought, speech, and action of Torah and mitzvot.</li><li>Torah study perfectly unites human intellect with G-d, uniquely serving as both spiritual "food" and "clothing".</li></ul></div><div class="outline-section"><strong>IV. The Animal Soul and Kelipot (Chapters 6–8)</strong><ul><li>The animal soul's garments are mundane thoughts, speech, and actions.</li><li>Permitted matters (*kelipat nogah*) ascend to holiness if utilized for serving G-d, but descend if used for bodily lust.</li><li>Prohibited matters stem from three completely impure *kelipot* and are trapped unless elevated through intense "repentance out of love".</li></ul></div>`
+      },
+      "9–17": {
+        overview: `Chapters 9 through 17 of the Tanya delineate the core spiritual taxonomy of an individual, based on the ongoing battle between the divine and animal souls over the "small city" of the body. The Alter Rebbe defines the *Tzaddik* (righteous) as one who has successfully transformed or completely eradicated their internal evil. Conversely, the *Rasha* (wicked) is one whose animal soul overpowers the divine soul, causing them to sin in thought, speech, or action.
+
+The primary focus of these chapters is the *Beinoni* (the intermediate man). A *Beinoni* never sins in practice; their divine soul maintains exclusive control over their thought, speech, and action. Nevertheless, the essence of their animal soul remains fully intact, meaning they still experience cravings for physical desires. Because absolute behavioral control is achievable through the mind's inherent supremacy over the heart, the rank of *Beinoni* is universally attainable. Even if a person cannot awaken a passionate emotional love for G-d, they can use their mind to generate an "intellectual" love and fear (*tevunah*). This intellectual arousal empowers their practical observance of Torah and mitzvot and serves as the "wings" that elevate their deeds, fulfilling the verse that the Torah is "very near to you".`,
+        outline: `<div class="outline-section"><strong>I. The Inner Battle (Chapter 9)</strong><ul><li>The divine and animal souls are likened to two kings waging war to conquer the "small city" of the body.</li></ul></div><div class="outline-section"><strong>II. The Tzaddik and the Rasha (Chapters 10–11)</strong><ul><li>The *Tzaddik* fully vanquishes the animal soul, converting evil into good.</li><li>The *Rasha* succumbs to the animal soul, allowing it to manifest in sinful deeds, speech, or thoughts.</li></ul></div><div class="outline-section"><strong>III. The Profile of the Beinoni (Chapters 12–13)</strong><ul><li>The *Beinoni* perfectly controls their behavior, never sinning, yet still harbors native evil desires within the heart.</li><li>The two inclinations act as internal "judges," but the divine soul dictates final action with G-d's assistance.</li></ul></div><div class="outline-section"><strong>IV. The Universal Goal (Chapter 14)</strong><ul><li>Changing the heart's intrinsic desires is reserved for the *Tzaddik*, but the behavioral control of the *Beinoni* is within everyone's grasp.</li></ul></div><div class="outline-section"><strong>V. Active Service vs. Passive Habit (Chapter 15)</strong><ul><li>True divine "service" requires an active, ongoing struggle against one's natural inclinations and habits.</li></ul></div><div class="outline-section"><strong>VI. The Supremacy of the Mind (Chapters 16–17)</strong><ul><li>The mind possesses an inherent ability to rule the heart and its desires.</li><li>Contemplating G-d's greatness generates intellectual love and fear (*tevunah*) that motivates action and elevates one's mitzvot, making the service of G-d "very near" to every person.</li></ul></div>`
+      },
+      "18–25": {
+        overview: `Chapters 18 through 25 explain how observing the Torah with love and fear is a highly accessible reality for every Jew. The Alter Rebbe introduces the concept of *ahavah mesuteret* (hidden love), an innate spiritual inheritance from the Patriarchs. Rooted in the soul’s supra-rational faculty of *chochmah*, this love behaves like a candle’s flame, instinctively yearning to reunite with its Divine source even at the cost of its own existence. This powerful inner bond compels every Jew to gladly choose martyrdom rather than commit idolatry and be severed from G-d.
+
+To demonstrate how this love motivates the observance of all commandments, the Alter Rebbe explains that true Divine unity means G-d is the only existing reality. Creation is sustained by G-d's "speech," but unlike human speech, the Divine Word never separates from Him; it only appears separate to created beings due to powerful contractions (*tzimtzumim*). Therefore, performing mitzvot (which embody G-d’s inner will) fuses a person with the Divine, acting as the "organs" of the King, while studying Torah achieves an even more profound, perfect union. Conversely, transgressing G-d’s will represents the ultimate separation. Sin essentially mirrors the egocentricity of idolatry, dragging the soul lower than the impure *kelipot*.
+
+Ultimately, by constantly awakening this inherent dread of being separated from G-d’s unity, every Jew can easily conquer the "spirit of folly" that leads to sin. This deep-seated fear and love empowers a person to both resist worldly temptations and joyfully exert themselves in observing the Torah to forge an eternal bond with G-d.`,
+        outline: `<div class="outline-section"><strong>I. The Hidden Love (Ahavah Mesuteret) (Ch. 18–19)</strong><ul><li>Every Jew possesses an innate, inherited love for G-d rooted in the supra-rational faculty of *chochmah*.</li><li>Like a candle flame, this love naturally yearns for self-nullification and unity with G-d, transcending logic.</li></ul></div><div class="outline-section"><strong>II. G-d’s Absolute Unity and "Speech" (Ch. 20–22)</strong><ul><li>G-d is the sole existing reality; the universe's creation does not alter His absolute oneness.</li><li>Unlike human speech, the Divine "Word" that sustains creation never separates from Him; it only appears distinct to creations due to heavy concealments (*tzimtzumim*).</li></ul></div><div class="outline-section"><strong>III. Unity Through Mitzvot vs. Separation Through Sin (Ch. 23–24)</strong><ul><li>Mitzvot act as the "organs" of G-d’s will; Torah study achieves an even higher, absolute union with the Divine.</li><li>Transgressions sever a person from G-d’s unity; because sin constitutes a rebellious independence akin to idolatry, the sinner temporarily falls lower than the *kelipot*.</li></ul></div><div class="outline-section"><strong>IV. Attaining the "Very Near" (Ch. 25)</strong><ul><li>A Jew can banish the "spirit of folly" at any moment by consciously awakening their innate readiness for self-sacrifice.</li><li>Recognizing that every sin temporarily severs one from G-d, while every mitzvah achieves an eternal bond, provides the motivation to conquer temptation and fulfill the entire Torah.</li></ul></div>`
+      },
+      "26–34": {
+        overview: `Chapters 26 through 34 of the Tanya provide practical strategies for overcoming the psychological and spiritual obstacles that hinder a person's divine service, specifically depression (*atzvut*) and dullness of heart (*timtum halev*). The Alter Rebbe explains that melancholy causes sluggishness and prevents victory over the evil inclination. If intrusive thoughts occur during mundane activities, one should rejoice in the opportunity to suppress them; if they arise during prayer, one should simply ignore them and beg G-d for mercy.
+
+To cure a "stone-like" heart, one must crush the arrogance of the animal soul by humbly recognizing their spiritual failings, even viewing themselves as lower than the most ignorant sinner. Any resulting sadness must be channeled into the profound joy of redeeming the divine soul from its bodily exile through Torah and mitzvot. Ultimately, elevating the soul above the body makes unconditional brotherly love (*Ahavat Yisrael*) natural, as all divine souls share a single root in G-d. True joy is sustained by meditating on G-d’s absolute unity and actively transforming oneself into a sanctuary for His presence.`,
+        outline: `<div class="outline-section"><strong>I. Overcoming Sadness and Distracting Thoughts (Ch. 26–28)</strong><ul><li>Sadness causes spiritual sluggishness; one must fight the evil inclination with alacrity and joy.</li><li>Mundane intrusive thoughts should be actively rejected, bringing joy through subduing the *sitra achara*.</li><li>Distractions during prayer must be ignored without attempting to "elevate" them.</li></ul></div><div class="outline-section"><strong>II. Curing Dullness of Heart (Timtum Halev) (Ch. 29–31)</strong><ul><li>A stone-like heart is cured by crushing the animal soul's arrogance through deep humility and spiritual stocktaking.</li><li>One should view oneself as lower than the lowliest sinner by recognizing their own failure to adequately battle the evil inclination.</li><li>Resulting sadness must be transformed into joy by focusing on liberating the captive divine soul through Torah and mitzvot.</li></ul></div><div class="outline-section"><strong>III. Love of Israel and True Joy (Ch. 32–34)</strong><ul><li>Prioritizing the soul over the body makes unconditional love for every Jew natural and accessible.</li><li>Profound joy is achieved by meditating on G-d’s absolute unity and how creation is nullified before Him.</li><li>Through constant Torah study and charity, an individual actively becomes a physical sanctuary for the Divine Presence.</li></ul></div>`
+      },
+      "35–40": {
+        overview: `Chapters 35 through 40 of the Tanya articulate why the practical performance of physical mitzvot is the ultimate purpose of Creation, and how proper intention (*kavanah*) elevates these deeds. The Alter Rebbe explains that G-d specifically desired a "dwelling place in the lower realms"—this dense, physical world. While the divine soul can connect to G-d through thought, only physical mitzvot can actively elevate the body and the vitalizing animal soul. Mitzvot act as the required "oil" that sustains the flame of the *Shechinah* upon the physical body. This transformation of material darkness into holy light draws down the infinite *Ein Sof*-light, an objective reality that will be fully revealed in the Messianic era.
+
+However, just as a physical body needs a soul to be truly alive, physical actions require the "wings" of love and fear of G-d to soar spiritually. Intellectual *kavanah* (born of deep contemplation) elevates mitzvot to the World of *Beriah*, while natural, instinctive *kavanah* elevates them to the World of *Yetzirah*. If mitzvot are performed purely out of habit without *kavanah*, they lack "wings" and cannot ascend into the Divine *Sefirot*, remaining below in the "externality of the worlds" unless elevated by a later mindful review. Furthermore, Torah studied strictly for selfish motives (*shelo lishmah*) remains trapped in the impure *kelipot* of this physical world until the person repents.`,
+        outline: `<div class="outline-section"><strong>I. The Ultimate Purpose of Creation (Ch. 35–37)</strong><ul><li>G-d desired an "abode in the lower realms," making the physical world the focal point of creation.</li><li>The body cannot be elevated by thought alone; physical mitzvot are the essential "oil" that anchors the *Shechinah*.</li><li>Elevating physical objects through mitzvot initiates a divine revelation that will culminate in the Messianic era.</li></ul></div><div class="outline-section"><strong>II. The "Body" and "Soul" of Mitzvot (Ch. 38)</strong><ul><li>Halachah dictates that physical action and spoken words are strictly required to fulfill the "body" of a mitzvah.</li><li>*Kavanah* (the intention to unite with G-d) functions as the indispensable "soul" that gives the mitzvah its spiritual vitality.</li></ul></div><div class="outline-section"><strong>III. The Spiritual Ascent of Deeds (Ch. 39)</strong><ul><li>Intellectual love and fear elevate a person's divine service to the World of *Beriah*.</li><li>Natural, instinctive love and fear elevate service to the World of *Yetzirah*.</li></ul></div><div class="outline-section"><strong>IV. The Necessity of Spiritual "Wings" (Ch. 40)</strong><ul><li>Love and fear serve as the "wings" required for Torah and mitzvot to ascend and merge into the Divine *Sefirot*.</li><li>Habitual mitzvot lacking *kavanah* remain below, while actions performed for selfish motives remain trapped in the *kelipot* until repentance.</li></ul></div>`
+      },
+      "41–50": {
+        overview: `Chapters 41 through 50 of the Tanya detail the practical application of love and fear in divine service, culminating in the profound dynamics of spiritual union. The Alter Rebbe establishes that "lower-level fear" (*yirah tataah*) is the fundamental prerequisite for all mitzvot, generated by meditating on G-d's omnipresence and Kingship. Every Jew can access this through their inherent "spark of Moses" (*Daat*).
+
+The chapters explore diverse avenues to awaken love: utilizing the inherited love of the Patriarchs, arousing deep compassion for the exiled divine soul, and reflecting on G-d's boundless descent to choose Israel ("as water mirrors a face"). The Exodus from Egypt is framed as a daily spiritual liberation of the soul, achieved actively through the *Shema*.
+
+To explain physical existence, the text details the immense divine contractions (*tzimtzumim*) that filter G-d’s infinite, encompassing light to create finite reality. Finally, the author addresses the intense, fiery love of *kelot hanefesh*—the soul's profound desire to expire into G-dliness. He concludes that one must deliberately "retreat" (*shov*) from this expiry, embracing physical Torah and mitzvot to fulfill G-d's ultimate intent for a terrestrial dwelling place.`,
+        outline: `<div class="outline-section"><strong>I. Fear as the Prerequisite (Ch. 41–43)</strong><ul><li>Lower-level fear is the foundation of all positive and negative mitzvot.</li><li>Attained by using the "spark of Moses" to meditate on G-d's omniscience.</li><li>Higher-level fear (*yirah ilaah*) stems from total self-nullification before G-d's greatness.</li></ul></div><div class="outline-section"><strong>II. Awakening Love and Compassion (Ch. 44–46)</strong><ul><li>Revealing innate love: craving G-d as the soul's life-force or loving Him like a devoted son.</li><li>Arousing compassion (*tiferet*) for the soul trapped in the body's "serpent's skin" to motivate Torah study.</li><li>"As water mirrors a face": reciprocating G-d's infinite love.</li></ul></div><div class="outline-section"><strong>III. Daily Exodus and Divine Contraction (Ch. 47–49)</strong><ul><li>The Exodus is a daily spiritual liberation achieved through the *Shema*.</li><li>G-d's infinite light undergoes immense *tzimtzumim* to sustain a finite universe while "encompassing" it.</li><li>Physical speech in Torah study is strictly necessary to elevate the lower worlds.</li></ul></div><div class="outline-section"><strong>IV. Kelot Hanefesh and the Ultimate Purpose (Ch. 50)</strong><ul><li>The intense, fiery love where the soul yearns to expire into G-d.</li><li>The necessity of "running and returning": remaining in the physical body to make this world G-d's dwelling place.</li></ul></div>`
+      },
+      "51–53": {
+        overview: `Chapters 51 through 53 of the Tanya explain how the *Shechinah* (Divine Presence) "dwells" in this physical world. The Alter Rebbe draws an analogy: just as a soul pervades the entire body but consciously reveals itself primarily in the brain, G-d's essence is equally present across all spiritual and physical realms, but the revelation of His vitalizing light varies. In our lowest world, this light is intensely concealed by dense "garments" so physical reality can exist without being nullified into nothingness. To safely draw down the *Shechinah*, the infinite light clothes itself in G-d's wisdom and will—the Torah and mitzvot. This light progressively descends, residing in the "Holy of Holies" (the intellect) of the spiritual worlds of *Beriah*, *Yetzirah*, and *Asiyah*.
+
+During the First Temple era, the *Shechinah* dwelled directly in the physical Holy of Holies, bypassing typical natural concealments. Today, the *Shechinah* rests in the "four cubits of Halachah" whenever a Jew engages in Torah and mitzvot. These chapters conclude the Zohar's candle analogy: the physical body and animal soul serve as the "wick," while mitzvot act as the "oil". By performing practical mitzvot, a Jew "burns" the coarse physical wick, transforming it into holy light and creating a permanent sanctuary for the Divine fire.`,
+        outline: `<div class="outline-section"><strong>I. The Concept of Divine Indwelling (Ch. 51)</strong><ul><li>The soul pervades the body but is primarily revealed in the brain.</li><li>G-d's essence is everywhere, but His revealed light is deeply concealed in the physical world by dense garments.</li></ul></div><div class="outline-section"><strong>II. The Garment of the Shechinah (Ch. 52)</strong><ul><li>Torah and mitzvot act as the protective "garment" for the *Shechinah*.</li><li>The light progressively descends through the worlds of *Beriah*, *Yetzirah*, and *Asiyah*.</li></ul></div><div class="outline-section"><strong>III. The Temple and Halachah (Ch. 53)</strong><ul><li>In the First Temple, the *Shechinah* dwelled miraculously via the Ten Commandments.</li><li>Today, the *Shechinah* resides solely within the "four cubits of Halachah" (Torah study and mitzvot).</li></ul></div><div class="outline-section"><strong>IV. Consuming the Wick (Ch. 53)</strong><ul><li>The physical body and animal soul act as the "wick" and mitzvot are the required "oil".</li><li>Practical action consumes the wick, successfully anchoring the Divine fire.</li></ul></div>`
+      }
+    };
+
+    function openGroupDetail(range) {
+      const detail = groupDetails[range];
+      if (!detail) return;
+
+      let section = null;
+      for (const s of sections) {
+        if (s.range === range) { section = s; break; }
+      }
+      if (!section) return;
+
+      const colorMap = { blue: "#1f6f8b", orange: "#c96c1b", green: "#3b7f3f", gold: "#c49323", teal: "#138180", purple: "#74508f", red: "#c65036" };
+      const accentColor = colorMap[section.color] || colorMap.blue;
+
+      detailHeader.innerHTML = `
+        <span class="num" style="background:${accentColor};min-width:auto;padding:0 14px;">${section.icon}</span>
+        <h2>${section.title} (Ch. ${section.range})</h2>
+        <button class="detail-close" onclick="closeDetail()" aria-label="Close">&times;</button>
+      `;
+
+      detailBody.innerHTML = `
+        <h3>Group Overview</h3>
+        <div class="overview-text">${renderMd(detail.overview)}</div>
+        <div class="outline-heading">Group Outline</div>
+        ${renderInlineMd(detail.outline)}
+      `;
+
+      overlay.classList.add("active");
+      document.body.style.overflow = "hidden";
+    }
+
     function openDetail(num) {
       const detail = chapterDetails[num];
       if (!detail) return;
@@ -1006,8 +1100,13 @@ The Alter Rebbe concludes the Zohar's candle analogy: the Shechinah is the super
       document.body.style.overflow = "";
     }
 
-    // Click handlers for chapters
+    // Click handlers for chapters and section labels
     map.addEventListener("click", (e) => {
+      const sectionLabel = e.target.closest(".section-label");
+      if (sectionLabel) {
+        openGroupDetail(sectionLabel.dataset.section);
+        return;
+      }
       const card = e.target.closest(".chapter");
       if (card) openDetail(parseInt(card.dataset.chapter));
     });
