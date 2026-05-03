@@ -410,7 +410,7 @@
       </div>
       <div class="subtitle">
         <div>
-          <h2>A Visual Overview of the 53 Chapters of Likutei Amarim\u2013Tanya</h2>
+          <h2>A Visual Overview of the 53 Chapters of Likutei Amarim Tanya</h2>
           <p>Learning aid based on the flow of Tanya</p>
         </div>
         <svg class="top-icon" viewBox="0 0 160 120" aria-hidden="true">
@@ -953,11 +953,15 @@ The Alter Rebbe concludes the Zohar's candle analogy: the Shechinah is the super
     const detailHeader = document.getElementById("detailHeader");
     const detailBody = document.getElementById("detailBody");
 
-    function renderMd(text) {
+    function renderInlineMd(text) {
+      text = text.replace(/\*{5,}/g, m => '***');
       return text
         .replace(/\*\*\*(.+?)\*\*\*/g, '<strong><em>$1</em></strong>')
         .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-        .replace(/(?<![a-zA-Z])\*(?!\s)(.+?)(?<!\s)\*(?![a-zA-Z])/g, '<em>$1</em>')
+        .replace(/\*([^*]+?)\*/g, '<em>$1</em>');
+    }
+    function renderMd(text) {
+      return renderInlineMd(text)
         .replace(/\n\n/g, '</p><p>')
         .replace(/^/, '<p>').replace(/$/, '</p>');
     }
@@ -990,7 +994,7 @@ The Alter Rebbe concludes the Zohar's candle analogy: the Shechinah is the super
         <h3>Overview</h3>
         <div class="overview-text">${renderMd(detail.overview)}</div>
         <div class="outline-heading">Chapter Outline</div>
-        ${detail.outline}
+        ${renderInlineMd(detail.outline)}
       `;
 
       overlay.classList.add("active");
