@@ -3,6 +3,7 @@ import http from 'http';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
+import zlib from 'zlib';
 import type { AddressInfo } from 'net';
 
 const mockEnv: Record<string, string> = {};
@@ -278,6 +279,76 @@ describe('credential-proxy', () => {
     expect(callCount).toBe(2);
     expect(receivedBodies[0]).toContain('"thinking"');
     expect(receivedBodies[1]).not.toContain('"thinking"');
+    expect(res.statusCode).toBe(200);
+  });
+
+  it('retries when the 400 body is gzip-encoded (Anthropic default)', async () => {
+    // Anthropic returns 4xx with `content-encoding: gzip`; the proxy must
+    // decompress before substring-matching the signature error.
+    await new Promise<void>((r) => upstreamServer.close(() => r()));
+
+    let callCount = 0;
+    upstreamServer = http.createServer((req, res) => {
+      const chunks: Buffer[] = [];
+      req.on('data', (c) => chunks.push(c));
+      req.on('end', () => {
+        callCount++;
+        if (callCount === 1) {
+          const body = Buffer.from(
+            JSON.stringify({
+              type: 'error',
+              error: {
+                type: 'invalid_request_error',
+                message:
+                  'messages.1.content.0: Invalid `signature` in `thinking` block',
+              },
+              request_id: 'req_test_gzip',
+            }),
+            'utf8',
+          );
+          const gzipped = zlib.gzipSync(body);
+          res.writeHead(400, {
+            'content-type': 'application/json',
+            'content-encoding': 'gzip',
+            'content-length': gzipped.length,
+          });
+          res.end(gzipped);
+        } else {
+          res.writeHead(200, { 'content-type': 'application/json' });
+          res.end(JSON.stringify({ ok: true }));
+        }
+      });
+    });
+    await new Promise<void>((r) => upstreamServer.listen(0, '127.0.0.1', r));
+    upstreamPort = (upstreamServer.address() as AddressInfo).port;
+
+    proxyPort = await startProxy({ ANTHROPIC_API_KEY: 'sk-ant-test' });
+
+    const res = await makeRequest(
+      proxyPort,
+      {
+        method: 'POST',
+        path: '/v1/messages',
+        headers: { 'content-type': 'application/json' },
+      },
+      JSON.stringify({
+        messages: [
+          {
+            role: 'assistant',
+            content: [
+              {
+                type: 'thinking',
+                thinking: 't',
+                signature: 'stale',
+              },
+            ],
+          },
+          { role: 'user', content: [{ type: 'text', text: 'q' }] },
+        ],
+      }),
+    );
+
+    expect(callCount).toBe(2);
     expect(res.statusCode).toBe(200);
   });
 

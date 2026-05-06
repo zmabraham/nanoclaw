@@ -16,6 +16,7 @@
 import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
+import zlib from 'zlib';
 import { createServer, Server, IncomingMessage, ServerResponse } from 'http';
 import { request as httpsRequest } from 'https';
 import { request as httpRequest, RequestOptions } from 'http';
@@ -186,6 +187,36 @@ export function stripThinkingBlocks(body: Buffer): Buffer {
 }
 
 /**
+ * Decode an HTTP response body according to its `content-encoding`. Returns
+ * the original buffer for `identity`, missing, or unrecognized encodings —
+ * the caller then falls back to substring-matching raw bytes.
+ */
+function decodeResponseBody(
+  body: Buffer,
+  contentEncoding: string | string[] | undefined,
+): Buffer {
+  if (!contentEncoding) return body;
+  const enc = Array.isArray(contentEncoding)
+    ? contentEncoding[0]
+    : contentEncoding;
+  try {
+    switch (enc.toLowerCase()) {
+      case 'gzip':
+      case 'x-gzip':
+        return zlib.gunzipSync(body);
+      case 'deflate':
+        return zlib.inflateSync(body);
+      case 'br':
+        return zlib.brotliDecompressSync(body);
+      default:
+        return body;
+    }
+  } catch {
+    return body;
+  }
+}
+
+/**
  * Detect Anthropic's "Invalid `signature` in `thinking` block" 400 response.
  * Matches the literal backtick-quoted error text Anthropic emits when the
  * thinking-block signature can't be verified under the active principal.
@@ -264,7 +295,14 @@ function sendUpstream(
           upRes.on('data', (c) => chunks.push(c));
           upRes.on('end', async () => {
             const respBody = Buffer.concat(chunks);
-            if (isThinkingSignatureError(respBody)) {
+            // Anthropic returns 4xx with `content-encoding: gzip`; substring
+            // matching only works against decoded bytes. Forward the
+            // original encoded buffer to the client unchanged either way.
+            const decoded = decodeResponseBody(
+              respBody,
+              upRes.headers['content-encoding'],
+            );
+            if (isThinkingSignatureError(decoded)) {
               const stripped = stripThinkingBlocks(finalBody);
               if (stripped !== finalBody) {
                 logger.warn(

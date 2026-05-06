@@ -13,7 +13,10 @@ import {
   TIMEZONE,
   TRIGGER_PATTERN,
 } from './config.js';
-import { startCredentialProxy } from './credential-proxy.js';
+import {
+  runCredentialChangeCheck,
+  startCredentialProxy,
+} from './credential-proxy.js';
 import './channels/index.js';
 import {
   getChannelFactory,
@@ -764,6 +767,12 @@ async function main(): Promise<void> {
   restoreRemoteControl();
 
   await runStartupHooks();
+
+  // Detect Claude credential rotation against the persisted fingerprint
+  // and bulk-purge stale `thinking`-block signatures from session JSONLs
+  // before the proxy starts serving — keeps the SDK from resuming with
+  // unverifiable signatures and bricking every group on the first turn.
+  runCredentialChangeCheck();
 
   // Start credential proxy (containers route API calls through this)
   const proxyServer = await startCredentialProxy(
