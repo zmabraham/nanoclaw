@@ -289,6 +289,15 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
         (m.is_from_me || isTriggerAllowed(chatJid, m.sender, allowlistCfg)),
     );
     if (!hasTrigger) {
+      // Advance cursor past this batch so the next recovery doesn't keep
+      // re-fetching the same trigger-less messages. Without this, a flood of
+      // non-trigger chat can bury earlier trigger messages outside the
+      // getMessagesSince LIMIT window and permanently stall the group.
+      agentCursors.advance(
+        chatJid,
+        missedMessages[missedMessages.length - 1].timestamp,
+      );
+      saveState();
       return true;
     }
   }
@@ -496,7 +505,7 @@ async function runAgent(
       const isStaleSession =
         sessionId &&
         output.error &&
-        /no conversation found|ENOENT.*\.jsonl|session.*not found/i.test(
+        /no conversation found|ENOENT.*\.jsonl|session.*not found|process exited with code 1|invalid.*signature.*thinking/i.test(
           output.error,
         );
 
@@ -772,6 +781,7 @@ async function main(): Promise<void> {
     for (const ch of channels) await ch.disconnect();
     await statusTracker.shutdown();
     await runShutdownHooks();
+    cleanupOrphans();
     process.exit(0);
   };
   process.on('SIGTERM', () => shutdown('SIGTERM'));

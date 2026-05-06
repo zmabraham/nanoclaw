@@ -22,6 +22,14 @@ const envConfig = readEnvFile([
   'LATE_FINALIZE_MAX_RETRIES',
   'LATE_FINALIZE_BACKOFF_MS',
   'LATE_FINALIZE_EXHAUST_COOLDOWN_MS',
+  'PROVIDER_PRIMARY',
+  'PROVIDER_FAILOVER_COOLDOWN',
+  'ZAI_API_KEY',
+  'ZAI_BASE_URL',
+  'ZAI_DEFAULT_MODEL',
+  'ZAI_DEFAULT_HAIKU_MODEL',
+  'ZAI_DEFAULT_SONNET_MODEL',
+  'ZAI_DEFAULT_OPUS_MODEL',
 ]);
 
 export const ASSISTANT_NAME =
@@ -174,3 +182,38 @@ export const LATE_FINALIZE_EXHAUST_COOLDOWN_MS = toNonNegativeInt(
     envConfig.LATE_FINALIZE_EXHAUST_COOLDOWN_MS,
   30_000,
 );
+
+// --- Provider switching (Claude ↔ ZAI) ---
+export type ProviderName = 'claude' | 'zai';
+
+export const PROVIDER_PRIMARY: ProviderName =
+  (process.env.PROVIDER_PRIMARY || envConfig.PROVIDER_PRIMARY) === 'zai'
+    ? 'zai'
+    : 'claude';
+
+export const PROVIDER_FAILOVER_COOLDOWN = toNonNegativeInt(
+  process.env.PROVIDER_FAILOVER_COOLDOWN ||
+    envConfig.PROVIDER_FAILOVER_COOLDOWN,
+  300_000, // 5 minutes
+);
+
+export const ZAI_API_KEY =
+  process.env.ZAI_API_KEY || envConfig.ZAI_API_KEY || '';
+export const ZAI_BASE_URL =
+  process.env.ZAI_BASE_URL ||
+  envConfig.ZAI_BASE_URL ||
+  'https://api.z.ai/api/anthropic';
+export const ZAI_DEFAULT_MODEL =
+  process.env.ZAI_DEFAULT_MODEL || envConfig.ZAI_DEFAULT_MODEL || 'glm-4.5-air';
+export const ZAI_DEFAULT_HAIKU_MODEL =
+  process.env.ZAI_DEFAULT_HAIKU_MODEL ||
+  envConfig.ZAI_DEFAULT_HAIKU_MODEL ||
+  'glm-4.5-air';
+export const ZAI_DEFAULT_SONNET_MODEL =
+  process.env.ZAI_DEFAULT_SONNET_MODEL ||
+  envConfig.ZAI_DEFAULT_SONNET_MODEL ||
+  'glm-4.7';
+export const ZAI_DEFAULT_OPUS_MODEL =
+  process.env.ZAI_DEFAULT_OPUS_MODEL ||
+  envConfig.ZAI_DEFAULT_OPUS_MODEL ||
+  'glm-5';
