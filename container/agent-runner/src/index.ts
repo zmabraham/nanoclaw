@@ -470,6 +470,7 @@ async function runQuery(
         'NotebookEdit',
         'mcp__nanoclaw__*',
         'mcp__qmd__*',
+        ...(containerInput.isMain ? ['mcp__notebooklm__*'] : []),
       ],
       env: sdkEnv,
       permissionMode: 'bypassPermissions',
@@ -489,6 +490,18 @@ async function runQuery(
           type: 'http',
           url: 'http://host.docker.internal:8182/mcp',
         },
+        ...(containerInput.isMain
+          ? {
+              notebooklm: {
+                command: 'node',
+                args: [path.join(path.dirname(fileURLToPath(import.meta.url)), 'notebooklm-mcp-stdio.js')],
+                env: {
+                  NOTEBOOKLM_PORT: process.env.NOTEBOOKLM_PORT || '11435',
+                  NOTEBOOKLM_HOST: process.env.NOTEBOOKLM_HOST || 'host.docker.internal',
+                },
+              },
+            }
+          : {}),
       },
       hooks: {
         PreCompact: [
@@ -631,6 +644,7 @@ async function main(): Promise<void> {
   const sdkEnv: Record<string, string | undefined> = {
     ...process.env,
     CLAUDE_CODE_AUTO_COMPACT_WINDOW: '165000',
+    CLAUDE_CODE_MAX_OUTPUT_TOKENS: '64000',
   };
 
   const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -683,6 +697,7 @@ async function main(): Promise<void> {
           permissionMode: 'bypassPermissions' as const,
           allowDangerouslySkipPermissions: true,
           settingSources: ['project', 'user'] as const,
+          thinking: { type: 'disabled' },
           hooks: {
             PreCompact: [{ hooks: [createPreCompactHook(containerInput.assistantName)] }],
           },

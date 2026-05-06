@@ -17,6 +17,10 @@ vi.mock('./config.js', () => ({
   IDLE_TIMEOUT: 1800000, // 30min
   OLLAMA_ADMIN_TOOLS: false,
   TIMEZONE: 'America/Los_Angeles',
+  ZAI_DEFAULT_MODEL: 'glm-4.5-air',
+  ZAI_DEFAULT_HAIKU_MODEL: 'glm-4.5-air',
+  ZAI_DEFAULT_SONNET_MODEL: 'glm-4.7',
+  ZAI_DEFAULT_OPUS_MODEL: 'glm-5',
 }));
 
 // Mock logger
@@ -64,6 +68,7 @@ vi.mock('./container-runtime.js', () => ({
 // Mock credential-proxy
 vi.mock('./credential-proxy.js', () => ({
   detectAuthMode: vi.fn(() => 'api-key'),
+  getActiveProvider: vi.fn(() => 'claude'),
 }));
 
 // Create a controllable fake ChildProcess

@@ -17,8 +17,13 @@ import {
   IDLE_TIMEOUT,
   OLLAMA_ADMIN_TOOLS,
   TIMEZONE,
+  ZAI_DEFAULT_MODEL,
+  ZAI_DEFAULT_HAIKU_MODEL,
+  ZAI_DEFAULT_SONNET_MODEL,
+  ZAI_DEFAULT_OPUS_MODEL,
 } from './config.js';
 import { resolveGroupFolderPath, resolveGroupIpcPath } from './group-folder.js';
+import { readEnvFile } from './env.js';
 import { logger } from './logger.js';
 import {
   CONTAINER_HOST_GATEWAY,
@@ -27,7 +32,7 @@ import {
   readonlyMountArgs,
   stopContainer,
 } from './container-runtime.js';
-import { detectAuthMode } from './credential-proxy.js';
+import { detectAuthMode, getActiveProvider } from './credential-proxy.js';
 import { validateAdditionalMounts } from './mount-security.js';
 import { RegisteredGroup } from './types.js';
 
@@ -350,22 +355,47 @@ function buildContainerArgs(
     `ANTHROPIC_BASE_URL=http://${CONTAINER_HOST_GATEWAY}:${CREDENTIAL_PROXY_PORT}`,
   );
 
-  // Mirror the host's auth method with a placeholder value.
-  // API key mode: SDK sends x-api-key, proxy replaces with real key.
-  // OAuth mode:   SDK exchanges placeholder token for temp API key,
-  //               proxy injects real OAuth token on that exchange request.
+  // Pass real credentials to the container.
+  // Claude Code >=2.1 validates auth before making API calls, so placeholder
+  // values no longer work. The credential proxy still rewrites headers as a
+  // defense-in-depth layer (routing, logging, failover).
   const authMode = detectAuthMode();
-  if (authMode === 'api-key') {
-    args.push('-e', 'ANTHROPIC_API_KEY=placeholder');
+  const secrets = readEnvFile(['ANTHROPIC_API_KEY', 'CLAUDE_CODE_OAUTH_TOKEN']);
+  if (authMode === 'api-key' && secrets.ANTHROPIC_API_KEY) {
+    args.push('-e', `ANTHROPIC_API_KEY=${secrets.ANTHROPIC_API_KEY}`);
+  } else if (secrets.CLAUDE_CODE_OAUTH_TOKEN) {
+    args.push(
+      '-e',
+      `CLAUDE_CODE_OAUTH_TOKEN=${secrets.CLAUDE_CODE_OAUTH_TOKEN}`,
+    );
   } else {
     args.push('-e', 'CLAUDE_CODE_OAUTH_TOKEN=placeholder');
   }
 
-  // Pass model environment variables for proper model mapping
-  args.push('-e', 'ANTHROPIC_DEFAULT_MODEL=glm-4.5-air');
-  args.push('-e', 'ANTHROPIC_DEFAULT_HAIKU_MODEL=glm-4.5-air');
-  args.push('-e', 'ANTHROPIC_DEFAULT_SONNET_MODEL=glm-4.7');
-  args.push('-e', 'ANTHROPIC_DEFAULT_OPUS_MODEL=glm-5');
+  // Pass model overrides based on the active provider.
+  // Claude: forward host env vars if set, otherwise SDK defaults apply.
+  // ZAI: inject GLM model names so the SDK sends the right model IDs.
+  const activeProvider = getActiveProvider();
+  if (activeProvider === 'zai') {
+    args.push('-e', `ANTHROPIC_DEFAULT_MODEL=${ZAI_DEFAULT_MODEL}`);
+    args.push('-e', `ANTHROPIC_DEFAULT_HAIKU_MODEL=${ZAI_DEFAULT_HAIKU_MODEL}`);
+    args.push(
+      '-e',
+      `ANTHROPIC_DEFAULT_SONNET_MODEL=${ZAI_DEFAULT_SONNET_MODEL}`,
+    );
+    args.push('-e', `ANTHROPIC_DEFAULT_OPUS_MODEL=${ZAI_DEFAULT_OPUS_MODEL}`);
+  } else {
+    for (const key of [
+      'ANTHROPIC_DEFAULT_MODEL',
+      'ANTHROPIC_DEFAULT_HAIKU_MODEL',
+      'ANTHROPIC_DEFAULT_SONNET_MODEL',
+      'ANTHROPIC_DEFAULT_OPUS_MODEL',
+    ]) {
+      if (process.env[key]) {
+        args.push('-e', `${key}=${process.env[key]}`);
+      }
+    }
+  }
 
   // Pass Jina API key for search functionality (main group only uses this)
   if (process.env.JINA_API_KEY) {
@@ -390,14 +420,15 @@ function buildContainerArgs(
   args.push(...hostGatewayArgs());
 
   // Run as host user so bind-mounted files are accessible.
-  // Skip when running as root (uid 0), as the container's node user (uid 1000),
-  // or when getuid is unavailable (native Windows without WSL).
+  // Skip when running as root (uid 0) or when getuid is unavailable
+  // (native Windows without WSL).
   const hostUid = process.getuid?.();
   const hostGid = process.getgid?.();
-  if (hostUid != null && hostUid !== 0 && hostUid !== 1000) {
+  if (hostUid != null && hostUid !== 0) {
     if (isMain) {
       // Main containers start as root so the entrypoint can mount --bind
       // to shadow .env. Privileges are dropped via setpriv in entrypoint.sh.
+      // Always pass RUN_UID — Claude Code >=2.1 refuses --dangerously-skip-permissions as root.
       args.push('-e', `RUN_UID=${hostUid}`);
       args.push('-e', `RUN_GID=${hostGid}`);
     } else {
