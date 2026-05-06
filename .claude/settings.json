@@ -1,11 +1,15 @@
 {
+  "enabledPlugins": {
+    "gabai-core@gabai-skills": true,
+    "nanoclaw-skills@nanoclaw-skills": true
+  },
   "extraKnownMarketplaces": {
     "gabai-skills": {
-      "source": { "source": "github", "repo": "ChabadLabs/GabAIskills" }
+      "source": {
+        "source": "github",
+        "repo": "ChabadLabs/GabAIskills"
+      }
     }
-  },
-  "enabledPlugins": {
-    "gabai-core@gabai-skills": true
   },
   "sandbox": {
     "network": {
@@ -13,8 +17,5 @@
         "npm.registry.com"
       ]
     }
-  },
-  "enabledPlugins": {
-    "gabai-core@gabai-skills": true
   }
 }
